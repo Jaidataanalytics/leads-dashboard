@@ -112,7 +112,7 @@ if not st.session_state["logged_in"]:
                     "role": match.iloc[0]["Role"]
                 })
                 log_event(u, "Login")
-                st.experimental_rerun()
+                st.rerun()
             else:
                 st.error("Invalid credentials")
     st.stop()
@@ -120,7 +120,7 @@ if not st.session_state["logged_in"]:
 with st.sidebar:
     if st.button("Logout"):
         st.session_state.clear()
-        st.experimental_rerun()
+        st.rerun()
 
     st.header("Filters")
     FILTERS = [
@@ -310,7 +310,7 @@ with tabs[4]:
                     log_event(current_user,"New Lead Uploaded",name)
                     st.success(f"Lead '{name}' added.")
                 st.session_state.upload_idx += 1
-                st.experimental_rerun()
+                st.rerun()
         else:
             st.success(f"✅ All {total} new leads processed.")
             for k in ("upload_idx","new_df"):
@@ -364,7 +364,7 @@ with tabs[5]:
                     st.cache_data.clear()
                     log_event(current_user,"Lead Updated",f"{enq} -> {new_stage}")
                     st.success("Lead updated successfully.")
-                    st.experimental_rerun()
+                    st.rerun()
 
 # Admin Panel
 if role=="Admin":
@@ -387,7 +387,7 @@ if role=="Admin":
             log_event(current_user,"Historical Data Upload",f"{added} added")
             st.success(f"{added} new leads added.")
             st.session_state.pop("upload_historical_file", None)
-            st.experimental_rerun()
+            st.rerun()
 
         st.markdown("---")
         confirm = st.text_input("Type DELETE to confirm full dashboard reset", key="reset_confirm")
@@ -397,7 +397,7 @@ if role=="Admin":
             log_event(current_user,"Dashboard Reset","All leads deleted")
             st.success("Dashboard data reset.")
             st.session_state.pop("reset_confirm", None)
-            st.experimental_rerun()
+            st.rerun()
 
         st.markdown("---")
         audit = pd.read_csv("audit_logs.csv")
