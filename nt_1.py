@@ -475,6 +475,10 @@ with st.container():
                 with insight_tabs[1]:
                     st.subheader("Cohort Analysis")
                     df = filtered_df[filtered_df["Enquiry Stage"].isin(won_stages)].copy()
+                    # Ensure date columns are datetime
+                    df["Enquiry Date"] = pd.to_datetime(df["Enquiry Date"], errors="coerce")
+                    df["Enquiry Closure Date"] = pd.to_datetime(df["Enquiry Closure Date"], errors="coerce")
+
                     df["CohortMonth"]     = df["Enquiry Date"].dt.to_period("M")
                     df["ConversionMonth"] = df["Enquiry Closure Date"].dt.to_period("M")
                     df["CohortIndex"] = (df["ConversionMonth"] - df["CohortMonth"]).apply(lambda x: x.n)
