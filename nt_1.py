@@ -85,8 +85,8 @@ def load_data():
             leads[col] = default
 
     # Preserve any existing 'Uploaded by'; if missing, init blank
-    if "Uploaded by" not in leads.columns:
-        leads["Uploaded by"] = ""
+    if "Uploaded by " not in leads.columns:
+        leads["Uploaded by "] = ""
 
     users = pd.read_csv("users.csv")
     return leads, users
