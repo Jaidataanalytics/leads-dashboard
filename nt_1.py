@@ -478,7 +478,7 @@ with st.container():
                     # Ensure date columns are datetime
                     df["Enquiry Date"] = pd.to_datetime(df["Enquiry Date"], errors="coerce")
                     df["Enquiry Closure Date"] = pd.to_datetime(df["Enquiry Closure Date"], errors="coerce")
-
+                    df = df[df["CohortMonth"].notna() & df["ConversionMonth"].notna()]
                     df["CohortMonth"]     = df["Enquiry Date"].dt.to_period("M")
                     df["ConversionMonth"] = df["Enquiry Closure Date"].dt.to_period("M")
                     df = df[df["CohortMonth"].notna() & df["ConversionMonth"].notna()].copy()
