@@ -479,7 +479,7 @@ if role=="Admin":
             leads_df.to_csv("leads.csv", index=False)
             log_event(current_user,"Historical Data Upload",f"{added} added")
             st.success(f"{added} new leads added.")
-            st.experimental_rerun()
+            st.rerun()
         st.markdown("---")
         # Audit Logs
         audit = pd.read_csv("audit_logs.csv")
