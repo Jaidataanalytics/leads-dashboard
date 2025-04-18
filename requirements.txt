@@ -1,6 +1,6 @@
 streamlit
 pandas
 plotly
-streamlit-aggrid
-streamlit‑lottie
 openpyxl
+streamlit-aggrid
+streamlit-lottie
