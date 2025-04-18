@@ -126,7 +126,7 @@ if not st.session_state["logged_in"]:
                     "role": m.iloc[0]["Role"]
                 })
                 log_event(u, "Login")
-                st.rerun()
+                st.experimental_rerun()
             else:
                 st.error("Invalid credentials")
     st.stop()
@@ -140,7 +140,7 @@ role         = st.session_state["role"]
 with st.sidebar:
     if st.button("Logout"):
         st.session_state.clear()
-        st.rerun()
+        st.experimental_rerun()
 
     with st.expander("Filters", expanded=True):
         st.header("Filter Leads")
@@ -240,29 +240,96 @@ with tabs[0]:
     AgGrid(ddf, gridOptions=gb.build(), enable_enterprise_modules=False)
 
 # --- Charts Tab ---
+### ⬇ REPLACE YOUR ENTIRE CHARTS‑TAB BLOCK WITH THIS ##########################
+### ── REPLACE YOUR ENTIRE CHARTS TAB WITH THIS BLOCK ────────────────────────
 with tabs[1]:
-    st.subheader("Leads Visualization")
-    counts = filtered_df["Enquiry Stage"].value_counts().reindex(
-        open_stages + won_stages + lost_stages, fill_value=0
-    )
-    funnel = (
-        [counts[s] for s in open_stages]
-        + [counts[won_stages[0]]+counts[won_stages[1]]]
-        + [counts[lost_stages[0]]+counts[lost_stages[1]]]
-    )
-    fig = go.Figure(go.Funnel(y=["Prospecting","Qualified","Won","Lost"], x=funnel))
-    fig.update_layout(title="Lead Funnel")
-    st.plotly_chart(fig, use_container_width=True)
+    st.subheader("Leads Visualisations")
 
-    top_d = (
-        filtered_df["Dealer"]
+    # 1️⃣  Pipeline Funnel (unchanged)
+    counts = (
+        filtered_df["Enquiry Stage"]
         .value_counts()
-        .nlargest(10)
-        .rename_axis("Dealer")
-        .reset_index(name="Leads")
+        .reindex(open_stages + won_stages + lost_stages, fill_value=0)
     )
-    st.plotly_chart(px.bar(top_d, x="Dealer", y="Leads", title="Top 10 Dealers"),
-                     use_container_width=True)
+    funnel_vals = (
+        [counts[s] for s in open_stages] +
+        [counts[won_stages[0]] + counts[won_stages[1]]] +
+        [counts[lost_stages[0]] + counts[lost_stages[1]]]
+    )
+    st.plotly_chart(
+        go.Figure(
+            go.Funnel(y=["Prospecting","Qualified","Won","Lost"], x=funnel_vals)
+        ).update_layout(title="Lead Pipeline Funnel"),
+        use_container_width=True,
+    )
+
+    # 2️⃣  Helper to build Top‑10 charts
+    def top10(df: pd.DataFrame, group: str, metric: str):
+        """
+        metric ∈ {'Total','Open','Closed','Conversion'}
+        Returns figure ready to plot.
+        """
+        stage_lists = df.groupby(group)["Enquiry Stage"].agg(list)
+
+        def value(lst):
+            if metric == "Total":
+                return len(lst)
+            if metric == "Open":
+                return sum(s in open_stages for s in lst)
+            if metric == "Closed":
+                return sum(s in won_stages + lost_stages for s in lst)
+            if metric == "Conversion":
+                t = len(lst)
+                w = sum(s in won_stages for s in lst)
+                return w / t * 100 if t else 0
+
+        out = (
+            stage_lists.apply(value)
+            .sort_values(ascending=False)
+            .head(10)
+            .reset_index(name="MetricValue")
+        )
+
+        bar_color = "red" if metric == "Open" else "#1f77b4"
+        y_title   = "Conversion %" if metric == "Conversion" else f"Leads {metric}"
+        title     = f"Top 10 {group}s by {metric}"
+
+        fig = px.bar(
+            out,
+            x=group,
+            y="MetricValue",
+            labels={group: group, "MetricValue": y_title},
+            title=title,
+            color_discrete_sequence=[bar_color],
+            text="MetricValue"  # show values on bars
+        )
+        fig.update_layout(yaxis_title=y_title)
+        if metric == "Conversion":
+            fig.update_yaxes(ticksuffix="%")
+
+        return fig
+
+    # 3️⃣  Metric selector
+    metric_opt = st.selectbox(
+        "Metric for all Top‑10 charts",
+        ["Total", "Open", "Closed", "Conversion"],
+        key="top10_metric",
+    )
+
+    # 4️⃣  Four Top‑10 charts
+    col1, col2 = st.columns(2)
+    with col1:
+        st.plotly_chart(top10(filtered_df, "Dealer",        metric_opt), use_container_width=True)
+    with col2:
+        st.plotly_chart(top10(filtered_df, "Employee Name", metric_opt), use_container_width=True)
+
+    col3, col4 = st.columns(2)
+    with col3:
+        st.plotly_chart(top10(filtered_df, "State",   metric_opt), use_container_width=True)
+    with col4:
+        st.plotly_chart(top10(filtered_df, "Segment", metric_opt), use_container_width=True)
+### ── END REPLACEMENT ────────────────────────────────────────────────────────
+
 
     gran = st.selectbox("Granularity", ["Daily","Weekly","Monthly"], key="ts_gran")
     freq = {"Daily":"D","Weekly":"W","Monthly":"M"}[gran]
@@ -339,7 +406,7 @@ with tabs[4]:
                     log_event(current_user,"New Lead Uploaded",name)
                     st.success(f"Lead '{name}' added.")
                 st.session_state.upload_idx += 1
-                st.rerun()
+                st.experimental_rerun()
 
 # --- Lead Update ---
 with tabs[5]:
@@ -392,7 +459,7 @@ with tabs[5]:
                 st.cache_data.clear()
                 log_event(current_user,"Lead Updated",f"{enq} -> {new_stage}")
                 st.success("Lead updated.")
-                st.rerun()
+                st.experimental_rerun()
 
 # --- Insights (Dealer Segmentation) ---
 with tabs[6]:
@@ -439,7 +506,7 @@ if role=="Admin":
             st.success(f"{len(combo)-orig} added.")
             st.cache_data.clear()
             log_event(current_user,"Historical Upload",f"{len(combo)-orig}")
-            st.rerun()
+            st.experimental_rerun()
 
         st.markdown("---")
         # Reset Data
@@ -449,7 +516,7 @@ if role=="Admin":
             st.success("Data wiped.")
             st.cache_data.clear()
             log_event(current_user,"Dashboard Reset")
-            st.rerun()
+            st.experimental_rerun()
 
         st.markdown("---")
         # Audit Logs
@@ -474,7 +541,7 @@ if role=="Admin":
                         users_df.to_csv("users.csv", index=False)
                         log_event(current_user,"User Added",nu)
                         st.success(f"Added {nu}.")
-                        st.rerun()
+                        st.experimental_rerun()
         to_del = st.multiselect("Delete Users", [u for u in users_df["Username"] if u!=current_user])
         if st.button("Delete Selected"):
             if to_del:
@@ -482,7 +549,7 @@ if role=="Admin":
                 users_df.to_csv("users.csv", index=False)
                 log_event(current_user,"User Deleted",",".join(to_del))
                 st.success(f"Deleted {', '.join(to_del)}.")
-                st.rerun()
+                st.experimental_rerun()
 
         st.markdown("---")
         # User Activity
