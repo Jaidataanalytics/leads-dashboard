@@ -399,7 +399,7 @@ with tabs[4]:
 # --- Lead Update ---
 with tabs[4]:
     st.subheader("Upload New Lead")
-    upload_file = st.file_uploader("Upload leads Excel (xlsx)", type="xlsx", key="upl_new")
+    upload_file = st.file_uploader("Upload leads Excel (xlsx)", type="xlsx", key="upload_new_lead_file")
 
     if upload_file:
         df_new = pd.read_excel(upload_file, engine="openpyxl")
@@ -470,7 +470,7 @@ if role=="Admin":
                 st.rerun()
         st.markdown("---")
         # Historical Upload
-        hf = st.file_uploader("Upload Historical Leads (xlsx/csv)", type=["xlsx","csv"], key="hist")
+        hf = st.file_uploader("Upload Historical Leads (xlsx/csv)", type=["xlsx","csv"], key="upload_historical_file")
         if hf:
             if hf.name.endswith(".xlsx"):
                 hdf = pd.read_excel(hf, engine="openpyxl")
