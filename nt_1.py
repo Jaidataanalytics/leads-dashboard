@@ -147,7 +147,7 @@ with st.sidebar:
         if st.button("Logout"):
             for k in ["logged_in","user","role"]:
                 st.session_state.pop(k)
-            st.experimental_rerun()
+            st.rerun()
 
    
 
@@ -394,7 +394,7 @@ with tabs[4]:
                     log_event(current_user, "New Lead Uploaded", name)
                     st.success(f"Lead '{name}' added.")
                 st.session_state.upload_idx += 1
-                st.experimental_rerun()
+                st.rerun()
 
 # --- Lead Update ---
 with tabs[5]:
@@ -448,7 +448,7 @@ with tabs[5]:
                     st.cache_data.clear() 
                     log_event(current_user, "Lead Updated", f"{enq} -> {new_stage}")
                     st.success("Lead updated successfully.")
-                    st.experimental_rerun()
+                    st.rerun()
 
 # --- Admin Panel ---
 if role=="Admin":
@@ -462,7 +462,7 @@ if role=="Admin":
                 pd.DataFrame(columns=leads_df.columns).to_csv("leads.csv", index=False)
                 log_event(current_user,"Dashboard Reset","All leads deleted")
                 st.success("Dashboard data reset.")
-                st.experimental_rerun()
+                st.rerun()
         st.markdown("---")
         # Historical Upload
         hf = st.file_uploader("Upload Historical Leads (xlsx/csv)", type=["xlsx","csv"], key="hist")
