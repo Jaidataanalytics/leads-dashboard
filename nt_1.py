@@ -475,43 +475,42 @@ with st.container():
                 with insight_tabs[1]:
                     st.subheader("Cohort Analysis")
 
-    # 1) Get only “won” leads and force datetime
-                    df = (
-                        filtered_df[filtered_df["Enquiry Stage"].isin(won_stages)]
-                        .copy()
-                    )
-                    df["Enquiry Date"] = pd.to_datetime(df["Enquiry Date"], errors="coerce")
-                    df["Enquiry Closure Date"] = pd.to_datetime(df["Enquiry Closure Date"], errors="coerce")
+    # 1) Filter to won leads and coerce to datetime
+                    df = filtered_df[filtered_df["Enquiry Stage"].isin(won_stages)].copy()
+                    df["Enquiry Date"]            = pd.to_datetime(df["Enquiry Date"], errors="coerce")
+                    df["Enquiry Closure Date"]    = pd.to_datetime(df["Enquiry Closure Date"], errors="coerce")
 
-    # 2) Create monthly Periods
+    # 2) Drop rows missing either date
+                    df = df[df["Enquiry Date"].notna() & df["Enquiry Closure Date"].notna()]
+
+    # 3) Build Period columns
                     df["CohortMonth"]     = df["Enquiry Date"].dt.to_period("M")
                     df["ConversionMonth"] = df["Enquiry Closure Date"].dt.to_period("M")
 
-    # 3) Drop rows where either period is missing
-                    df = df[df["CohortMonth"].notna() & df["ConversionMonth"].notna()].copy()
+    # 4) Compute month‐difference via ordinal
+                    df["CohortIndex"] = (
+                        df["ConversionMonth"].map(lambda p: p.ordinal)
+        -                 df["CohortMonth"].map(lambda p: p.ordinal)
+                    )
 
-    # 4) Compute CohortIndex safely
-                    diff = df["ConversionMonth"] - df["CohortMonth"]
-                    df["CohortIndex"] = diff.map(lambda x: x.n)
-
-    # 5) Build counts and pivot
+    # 5) Aggregate and pivot
                     cohort_counts = (
                         df.groupby(["CohortMonth","CohortIndex"])["Enquiry No"]
                           .count().reset_index(name="Converted")
                     )
                     cohort_size = (
-                        filtered_df.groupby(filtered_df["Enquiry Date"].dt.to_period("M"))["Enquiry No"]
-                                   .count().rename("Total")
-                                   .reset_index()
-                                   .rename(columns={"Enquiry Date":"CohortMonth"})
+                        filtered_df
+                        .groupby(filtered_df["Enquiry Date"].dt.to_period("M"))["Enquiry No"]
+                        .count().rename("Total")
+                        .reset_index().rename(columns={"Enquiry Date":"CohortMonth"})
                     )
                     cohort = pd.merge(cohort_counts, cohort_size, on="CohortMonth")
                     cohort["ConversionRate"] = cohort["Converted"] / cohort["Total"] * 100
 
                     pivot = cohort.pivot(
-                    index="CohortMonth",
-                    columns="CohortIndex",
-                    values="ConversionRate"
+                        index="CohortMonth",
+                        columns="CohortIndex",
+                        values="ConversionRate"
                     ).fillna(0)
 
                     st.write("Conversion Rate (%) by Cohort Month & Months Since Enquiry")
