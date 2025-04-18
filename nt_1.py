@@ -397,58 +397,63 @@ with tabs[4]:
                 st.rerun()
 
 # --- Lead Update ---
-with tabs[5]:
-    st.subheader("Lead Update")
-    open_df = filtered_df[filtered_df["Enquiry Stage"].isin(open_stages)]
-    if open_df.empty:
-        st.info("No open leads.")
-    else:
-        search = st.text_input("Search Lead (Name or Enq No)", key="lu_search")
-        opts = (open_df["Enquiry No"].astype(str)+" - "+open_df["Name"]).tolist()
-        if search:
-            opts = [o for o in opts if search.lower() in o.lower()]
-        if not opts:
-            st.warning("No leads found.")
-        else:
-            sel = st.selectbox("Select Lead", opts, key="lu_select")
-            enq = sel.split(" - ",1)[0]
-            row = open_df[open_df["Enquiry No"].astype(str)==enq].iloc[0]
-            idx = row.name
-            with st.form("upd_form"):
-                new_stage = st.selectbox("Enquiry Stage",
-                    ["Prospecting","Qualified","Closed-Dropped","Closed-Lost","Closed-Won","Order Booked"],
-                    index=["Prospecting","Qualified","Closed-Dropped","Closed-Lost","Closed-Won","Order Booked"].index(row["Enquiry Stage"]))
-                new_remark = st.text_area("Remarks", value=row.get("Remarks",""))
-                new_date   = st.date_input("Next Follow-up Date",
-                    value=(row["Planned Followup Date"].date() if pd.notna(row["Planned Followup Date"])
-                           else datetime.today().date()))
-                new_fu     = st.number_input("No of Follow-ups", min_value=0,
-                                             value=int(row.get("No of Follow-ups",0)), step=1)
-                new_act    = st.text_input("Next Action", value=row.get("Next Action",""))
-                if st.form_submit_button("Save Changes"):
-                    fields = {
-                        "Enquiry Stage": new_stage,
-                        "Remarks": new_remark,
-                        "Planned Followup Date": pd.to_datetime(new_date),
-                        "No of Follow-ups": new_fu,
-                        "Next Action": new_act
-                    }
-                    for field, new_val in fields.items():
-                        old_val = leads_df.at[idx, field]
-                        if (pd.isna(old_val) and new_val is not None) or (old_val != new_val):
-                            log_audit(current_user, "Update", enq, field, old_val, new_val, "Lead field changed")
-                            leads_df.at[idx, field] = new_val
-                    if new_stage in won_stages:
-                        leads_df.at[idx,"EnquiryStatus"]="Converted"
-                        leads_df.at[idx,"Enquiry Closure Date"]=datetime.now()
-                    if new_stage in lost_stages:
-                        leads_df.at[idx,"EnquiryStatus"]="Closed"
-                        leads_df.at[idx,"Enquiry Closure Date"]=datetime.now()
+with tabs[4]:
+    st.subheader("Upload New Lead")
+    upload_file = st.file_uploader("Upload leads Excel (xlsx)", type="xlsx", key="upl_new")
+
+    if upload_file:
+        df_new = pd.read_excel(upload_file, engine="openpyxl")
+        for i in range(1,6):
+            col = f"Question{i}"
+            if col not in df_new.columns:
+                df_new[col] = ""
+
+        # initialize once
+        if "upload_idx" not in st.session_state:
+            st.session_state.upload_idx = 0
+            st.session_state.new_df = df_new
+
+        idx = st.session_state.upload_idx
+        total = len(st.session_state.new_df)
+
+        if idx < total:
+            lead = st.session_state.new_df.iloc[idx]
+            st.write(f"**Lead {idx+1}/{total}: {lead['Name']}**")
+
+            q1 = st.selectbox("Q1. Status of the site", [...], key=f"q1_{idx}")
+            q2 = st.selectbox("Q2. Contact person",   [...], key=f"q2_{idx}")
+            q3 = st.selectbox("Q3. Decision maker?",   [...], key=f"q3_{idx}")
+            q4 = st.selectbox("Q4. Customer orientation", [...], key=f"q4_{idx}")
+            q5 = st.selectbox("Q5. Who decides?",     [...], key=f"q5_{idx}")
+
+            if st.button("Submit Lead", key=f"sub_{idx}"):
+                name, phone = lead["Name"], lead["Phone Number"]
+                exists = ((leads_df["Name"]==name)&(leads_df["Phone Number"]==phone)).any()
+                if exists:
+                    st.warning(f"Lead '{name}' exists; skipped.")
+                else:
+                    for i, ans in enumerate((q1,q2,q3,q4,q5), start=1):
+                        log_audit(current_user, "Create", lead["Enquiry No"],
+                                  f"Question{i}", "", ans, "Questionnaire answer")
+                        st.session_state.new_df.at[idx, f"Question{i}"] = ans
+                    entry = st.session_state.new_df.loc[idx].copy()
+                    entry["Created By"] = current_user
+                    leads_df.loc[len(leads_df)] = entry
                     leads_df.to_csv("leads.csv", index=False)
-                    st.cache_data.clear() 
-                    log_event(current_user, "Lead Updated", f"{enq} -> {new_stage}")
-                    st.success("Lead updated successfully.")
-                    st.rerun()
+                    st.cache_data.clear()
+                    log_event(current_user, "New Lead Uploaded", name)
+                    st.success(f"Lead '{name}' added.")
+
+                st.session_state.upload_idx += 1
+                st.rerun()
+
+        else:
+            # all leads processed
+            st.success(f"✅ All {total} new leads processed.")
+            # reset for next upload
+            for k in ("upload_idx","new_df"):
+                st.session_state.pop(k, None)
+
 
 # --- Admin Panel ---
 if role=="Admin":
