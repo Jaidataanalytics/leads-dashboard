@@ -37,7 +37,6 @@ def ensure_file(path, cols):
 ensure_file("user_logs.csv",  ["Timestamp","User","Action","Details"])
 ensure_file("audit_logs.csv", ["Timestamp","User","Action","Enquiry No","Field","Old Value","New Value","Details"])
 
-# Logging helpers
 def log_event(user, action, details=""):
     pd.DataFrame([[datetime.now(), user, action, details]],
                  columns=["Timestamp","User","Action","Details"])\
@@ -53,20 +52,24 @@ def log_audit(user, action, enq, field, old, new, details=""):
 # ──────────────────────────────────────────────────────────────────────────────
 @st.cache_data
 def load_data():
+    # read header to drop duplicate columns
     tmp = pd.read_csv("leads.csv", nrows=0)
     leads = pd.read_csv(
         "leads.csv",
         dtype={"KVA": float},
-        parse_dates=["Enquiry Date","Planned Followup Date","Enquiry Closure Date"],
+        parse_dates=[
+            "Enquiry Date","Planned Followup Date","Enquiry Closure Date"
+        ],
         dayfirst=True, keep_default_na=False
     ).loc[:, ~tmp.columns.duplicated()]
 
-    # ensure datetime
     leads["Enquiry Date"] = pd.to_datetime(leads["Enquiry Date"], errors="coerce")
 
     # drop unused columns
-    drop_cols = ["Corporate Name","Tehsil","Pincode","PAN NO.","Events","Finance Required","Finance Company"]
-    leads.drop(columns=[c for c in drop_cols if c in leads.columns], inplace=True)
+    drop_cols = ["Corporate Name","Tehsil","Pincode","PAN NO.",
+                 "Events","Finance Required","Finance Company"]
+    leads.drop(columns=[c for c in drop_cols if c in leads.columns],
+               inplace=True)
 
     # ensure questionnaire columns
     for i in range(1,6):
@@ -74,7 +77,7 @@ def load_data():
         if col not in leads.columns:
             leads[col] = ""
 
-    # ensure other fields exist
+    # ensure other columns exist
     defaults = {
         "Remarks": "",
         "No of Follow-ups": 0,
@@ -99,7 +102,8 @@ current_user = st.session_state.get("user")
 role         = st.session_state.get("role")
 
 if not st.session_state["logged_in"]:
-    def _on_enter(): st.session_state["trigger_login"] = True
+    def _on_enter():
+        st.session_state["trigger_login"] = True
 
     c1, c2, c3 = st.columns([1,2,1])
     with c2:
@@ -109,7 +113,9 @@ if not st.session_state["logged_in"]:
                          key="login_pass", on_change=_on_enter)
         btn = st.button("Login")
         if btn or st.session_state.pop("trigger_login", False):
-            m = users_df[(users_df["Username"]==u)&(users_df["Password"]==p)]
+            m = users_df[
+                (users_df["Username"]==u)&(users_df["Password"]==p)
+            ]
             if not m.empty:
                 st.session_state.update({
                     "logged_in": True,
@@ -149,7 +155,7 @@ with st.sidebar:
         mn, mx = int(leads_df["KVA"].min()), int(leads_df["KVA"].max())
     else:
         mn, mx = 0, 1
-    if mn>=mx: mx=mn+1
+    if mn>=mx: mx = mn+1
     kva_range = st.slider("KVA Range", mn, mx, (mn,mx), key="f6")
 
     # date range
@@ -174,25 +180,30 @@ def get_filtered(df, sel, kva, sd, ed):
     return d
 
 filtered_df = get_filtered(leads_df, selected, kva_range, start_date, end_date)
-log_event(current_user, "Filter Applied",
-          f"{selected}, KVA={kva_range}, Dates={start_date}–{end_date}")
+log_event(
+    current_user, "Filter Applied",
+    f"{selected}, KVA={kva_range}, Dates={start_date}–{end_date}"
+)
 
-# Stage categories & tabs
 open_stages = ["Prospecting","Qualified"]
 won_stages  = ["Closed-Won","Order Booked"]
 lost_stages = ["Closed-Dropped","Closed-Lost"]
 
 tabs = ["KPI","Charts","Top Dealers","Top Employees","Upload New Lead","Lead Update"]
-if role=="Admin": tabs.append("Admin")
+if role=="Admin":
+    tabs.append("Admin")
 tabs = st.tabs(tabs)
-# --- KPI Tab ---
+
+# ──────────────────────────────────────────────────────────────────────────────
+# KPI Tab
+# ──────────────────────────────────────────────────────────────────────────────
 with tabs[0]:
     st.subheader("Key Performance Indicators")
-    total    = len(filtered_df)
-    open_cnt = filtered_df["Enquiry Stage"].isin(open_stages).sum()
-    won_cnt  = filtered_df["Enquiry Stage"].isin(won_stages).sum()
-    lost_cnt = filtered_df["Enquiry Stage"].isin(lost_stages).sum()
-    conv_pct   = f"{(won_cnt/total*100):.1f}%"  if total else "0%"
+    total      = len(filtered_df)
+    open_cnt   = filtered_df["Enquiry Stage"].isin(open_stages).sum()
+    won_cnt    = filtered_df["Enquiry Stage"].isin(won_stages).sum()
+    lost_cnt   = filtered_df["Enquiry Stage"].isin(lost_stages).sum()
+    conv_pct   = f"{(won_cnt/total*100):.1f}%"    if total else "0%"
     closed_pct = f"{((won_cnt+lost_cnt)/total*100):.1f}%" if total else "0%"
 
     cards = [
@@ -230,15 +241,19 @@ with tabs[0]:
     gb.configure_default_column(enableValue=True, sortable=True, filter=True)
     AgGrid(ddf, gridOptions=gb.build(), enable_enterprise_modules=False)
 
-# --- Charts Tab ---
+# ──────────────────────────────────────────────────────────────────────────────
+# Charts Tab
+# ──────────────────────────────────────────────────────────────────────────────
 with tabs[1]:
     st.subheader("Leads Visualization")
     counts = filtered_df["Enquiry Stage"].value_counts().reindex(
         open_stages + won_stages + lost_stages, fill_value=0
     )
-    funnel_vals = [counts[s] for s in open_stages] + \
-                  [counts[won_stages[0]]+counts[won_stages[1]]] + \
-                  [counts[lost_stages[0]]+counts[lost_stages[1]]]
+    funnel_vals = (
+        [counts[s] for s in open_stages] +
+        [counts[won_stages[0]] + counts[won_stages[1]]] +
+        [counts[lost_stages[0]] + counts[lost_stages[1]]]
+    )
     fig = go.Figure(go.Funnel(
         y=["Prospecting","Qualified","Won","Lost"], x=funnel_vals
     ))
@@ -260,21 +275,21 @@ with tabs[1]:
     ts_df = (
         filtered_df
         .set_index("Enquiry Date")
-        .resample(freq)
-        .size()
-        .rename("Leads")
-        .to_frame()
-        .reset_index()
+        .resample(freq).size().rename("Leads").to_frame().reset_index()
     )
     ts_df[f"MA({win})"] = ts_df["Leads"].rolling(win, min_periods=1).mean()
     st.plotly_chart(
-        px.line(ts_df, x="Enquiry Date", y=["Leads",f"MA({win})"],
-                labels={"value":"Count","variable":"Metric"},
-                title=f"{gran} Leads & {win}-Period MA"),
+        px.line(
+            ts_df, x="Enquiry Date", y=["Leads",f"MA({win})"],
+            labels={"value":"Count","variable":"Metric"},
+            title=f"{gran} Leads & {win}-Period MA"
+        ),
         use_container_width=True
     )
 
-# --- Top Dealers & Employees ---
+# ──────────────────────────────────────────────────────────────────────────────
+# Top Dealers & Employees Tabs
+# ──────────────────────────────────────────────────────────────────────────────
 def top5(df, by):
     agg = df.groupby(by).agg(
         Total_Leads=("Enquiry No","count"),
@@ -292,7 +307,9 @@ with tabs[3]:
     st.subheader("Top 5 Employees")
     st.table(top5(filtered_df, "Employee Name"))
 
-# --- Upload New Lead ---
+# ──────────────────────────────────────────────────────────────────────────────
+# Upload New Lead Tab
+# ──────────────────────────────────────────────────────────────────────────────
 with tabs[4]:
     st.subheader("Upload New Lead")
     upload_file = st.file_uploader(
@@ -307,26 +324,36 @@ with tabs[4]:
                 df_new[col] = ""
         if "upload_idx" not in st.session_state:
             st.session_state.upload_idx = 0
-            st.session_state.new_df = df_new
-        idx = st.session_state.upload_idx
+            st.session_state.new_df   = df_new
+        idx   = st.session_state.upload_idx
         total = len(st.session_state.new_df)
 
         if idx < total:
             lead = st.session_state.new_df.iloc[idx]
             st.write(f"**Lead {idx+1}/{total}: {lead['Name']}**")
-            q1 = st.selectbox("Q1. Status of the site", ["under construction","nearly constructed","constructed","planning"], key=f"q1_{idx}")
-            q2 = st.selectbox("Q2. Contact person", ["Owner","Manager","Purchase Dept","Other"], key=f"q2_{idx}")
-            q3 = st.selectbox("Q3. Decision maker?", ["Yes","No"], key=f"q3_{idx}")
-            q4 = st.selectbox("Q4. Customer orientation", ["Price","Quality"], key=f"q4_{idx}")
-            q5 = st.selectbox("Q5. Who decides?", ["contact person","owner","manager","purchase head"], key=f"q5_{idx}")
-            if st.button("Submit Lead", key=f"sub_{idx}"):
+            # use form so button always shows
+            with st.form(key=f"newlead_form_{idx}"):
+                q1 = st.selectbox("Q1. Status of the site",
+                                  ["under construction","nearly constructed","constructed","planning"],
+                                  key=f"q1_{idx}")
+                q2 = st.selectbox("Q2. Contact person",
+                                  ["Owner","Manager","Purchase Dept","Other"],
+                                  key=f"q2_{idx}")
+                q3 = st.selectbox("Q3. Decision maker?",["Yes","No"], key=f"q3_{idx}")
+                q4 = st.selectbox("Q4. Customer orientation",["Price","Quality"], key=f"q4_{idx}")
+                q5 = st.selectbox("Q5. Who decides?",
+                                  ["contact person","owner","manager","purchase head"],
+                                  key=f"q5_{idx}")
+                submitted = st.form_submit_button("Submit Lead")
+            if submitted:
                 name, phone = lead["Name"], lead["Phone Number"]
-                exists = ((leads_df["Name"]==name) & (leads_df["Phone Number"]==phone)).any()
+                exists = ((leads_df["Name"]==name)&(leads_df["Phone Number"]==phone)).any()
                 if exists:
                     st.warning(f"Lead '{name}' exists; skipped.")
                 else:
                     for i, ans in enumerate((q1,q2,q3,q4,q5), start=1):
-                        log_audit(current_user,"Create",lead["Enquiry No"],f"Question{i}","",ans,"Questionnaire answer")
+                        log_audit(current_user,"Create",lead["Enquiry No"],
+                                  f"Question{i}","",ans,"Questionnaire answer")
                         st.session_state.new_df.at[idx, f"Question{i}"] = ans
                     entry = st.session_state.new_df.loc[idx].copy()
                     entry["Created By"] = current_user
@@ -337,12 +364,9 @@ with tabs[4]:
                     st.success(f"Lead '{name}' added.")
                 st.session_state.upload_idx += 1
                 st.rerun()
-        else:
-            st.success(f"✅ All {total} new leads processed.")
-            for k in ("upload_idx","new_df"):
-                st.session_state.pop(k, None)
-
-# --- Lead Update ---
+# ──────────────────────────────────────────────────────────────────────────────
+# Lead Update Tab
+# ──────────────────────────────────────────────────────────────────────────────
 with tabs[5]:
     st.subheader("Lead Update")
     open_df = filtered_df[filtered_df["Enquiry Stage"].isin(open_stages)]
@@ -361,49 +385,72 @@ with tabs[5]:
             row = open_df[open_df["Enquiry No"].astype(str)==enq].iloc[0]
             idx = row.name
             with st.form("update_form"):
-                stages = list(filtered_df["Enquiry Stage"].dropna().unique())
-                new_stage = st.selectbox("Enquiry Stage", stages, index=stages.index(row["Enquiry Stage"]), key="update_stage")
-                new_remark = st.text_area("Remarks", value=row.get("Remarks",""), key="update_remarks")
-                new_date = st.date_input("Next Follow-up Date", value=(row["Planned Follow‑up Date"].date() if pd.notna(row["Planned Follow‑up Date"]) else datetime.today().date()), key="update_date")
-                new_fu = st.number_input("No of Follow-ups", min_value=0, value=int(row.get("No of Follow-ups",0)), key="update_fu")
-                new_act = st.text_input("Next Action", value=row.get("Next Action",""), key="update_action")
+                stages    = list(filtered_df["Enquiry Stage"].dropna().unique())
+                new_stage = st.selectbox("Enquiry Stage", stages,
+                                         index=stages.index(row["Enquiry Stage"]),
+                                         key="update_stage")
+                new_remark = st.text_area("Remarks",
+                                         value=row.get("Remarks",""),
+                                         key="update_remarks")
+                new_date = st.date_input(
+                    "Next Follow‑up Date",
+                    value=(row["Planned Followup Date"].date()
+                           if pd.notna(row["Planned Followup Date"])
+                           else datetime.today().date()),
+                    key="update_date"
+                )
+                new_fu  = st.number_input("No of Follow-ups",
+                                         min_value=0,
+                                         value=int(row.get("No of Follow-ups",0)),
+                                         key="update_fu")
+                new_act = st.text_input("Next Action",
+                                        value=row.get("Next Action",""),
+                                        key="update_action")
                 if st.form_submit_button("Save Changes", key="update_submit"):
                     updates = {
                         "Enquiry Stage": new_stage,
                         "Remarks": new_remark,
-                        "Planned Follow-up Date": pd.to_datetime(new_date),
+                        "Planned Followup Date": pd.to_datetime(new_date),
                         "No of Follow-ups": new_fu,
                         "Next Action": new_act
                     }
                     for field, new_val in updates.items():
                         old_val = leads_df.at[idx, field]
                         if (pd.isna(old_val) and new_val is not None) or (old_val != new_val):
-                            log_audit(current_user,"Update",enq,field,old_val,new_val,"Lead field changed")
+                            log_audit(current_user,"Update",enq,
+                                      field, old_val, new_val, "Lead field changed")
                             leads_df.at[idx, field] = new_val
                     if new_stage in won_stages:
-                        leads_df.at[idx,"EnquiryStatus"]="Converted"
-                        leads_df.at[idx,"Enquiry Closure Date"]=datetime.now()
+                        leads_df.at[idx,"EnquiryStatus"] = "Converted"
+                        leads_df.at[idx,"Enquiry Closure Date"] = datetime.now()
                     elif new_stage in lost_stages:
-                        leads_df.at[idx,"EnquiryStatus"]="Closed"
-                        leads_df.at[idx,"Enquiry Closure Date"]=datetime.now()
+                        leads_df.at[idx,"EnquiryStatus"] = "Closed"
+                        leads_df.at[idx,"Enquiry Closure Date"] = datetime.now()
                     leads_df.to_csv("leads.csv", index=False)
                     st.cache_data.clear()
                     log_event(current_user,"Lead Updated",f"{enq} -> {new_stage}")
                     st.success("Lead updated successfully.")
                     st.rerun()
 
-# --- Admin Panel ---
+# ──────────────────────────────────────────────────────────────────────────────
+# Admin Panel
+# ──────────────────────────────────────────────────────────────────────────────
 if role=="Admin":
     with tabs[-1]:
         st.subheader("Admin Panel")
+
         # Historical Upload
-        hf = st.file_uploader("Upload Historical Leads (xlsx/csv)", type=["xlsx","csv"], key="upload_historical_file")
+        hf = st.file_uploader(
+            "Upload Historical Leads (xlsx/csv)",
+            type=["xlsx","csv"],
+            key="upload_historical_file"
+        )
         if hf and st.button("Process Historical Upload", key="hist_submit"):
             if hf.name.endswith(".xlsx"):
                 hdf = pd.read_excel(hf, engine="openpyxl")
             else:
                 hdf = pd.read_csv(hf)
-            orig = len(leads_df)
+            orig  = len(leads_df)
             combo = pd.concat([leads_df, hdf], ignore_index=True)
             combo.drop_duplicates(subset=["Enquiry No"], keep="first", inplace=True)
             added = len(combo) - orig
@@ -416,7 +463,10 @@ if role=="Admin":
             st.rerun()
 
         st.markdown("---")
-        confirm = st.text_input("Type DELETE to confirm full dashboard reset", key="reset_confirm")
+        confirm = st.text_input(
+            "Type DELETE to confirm full dashboard reset",
+            key="reset_confirm"
+        )
         if st.button("Reset All Dashboard Data") and confirm=="DELETE":
             pd.DataFrame(columns=leads_df.columns).to_csv("leads.csv", index=False)
             st.cache_data.clear()
@@ -428,7 +478,12 @@ if role=="Admin":
         st.markdown("---")
         audit = pd.read_csv("audit_logs.csv")
         st.dataframe(audit, use_container_width=True)
-        st.download_button("Download Audit Logs", audit.to_csv(index=False).encode(), "audit_logs.csv", "text/csv")
+        st.download_button(
+            "Download Audit Logs",
+            audit.to_csv(index=False).encode(),
+            "audit_logs.csv",
+            "text/csv"
+        )
 
         st.markdown("---")
         st.markdown("**Users**")
@@ -437,4 +492,9 @@ if role=="Admin":
         st.markdown("---")
         ul = pd.read_csv("user_logs.csv")
         st.dataframe(ul, use_container_width=True)
-        st.download_button("Download User Log", ul.to_csv(index=False).encode(), "user_logs.csv", "text/csv")
+        st.download_button(
+            "Download User Log",
+            ul.to_csv(index=False).encode(),
+            "user_logs.csv",
+            "text/csv"
+        )
