@@ -474,37 +474,57 @@ with st.container():
 
                 with insight_tabs[1]:
                     st.subheader("Cohort Analysis")
-                    df = filtered_df[filtered_df["Enquiry Stage"].isin(won_stages)].copy()
-                    # Ensure date columns are datetime
+
+    # 1) Get only “won” leads and force datetime
+                    df = (
+                        filtered_df[filtered_df["Enquiry Stage"].isin(won_stages)]
+                        .copy()
+                    )
                     df["Enquiry Date"] = pd.to_datetime(df["Enquiry Date"], errors="coerce")
                     df["Enquiry Closure Date"] = pd.to_datetime(df["Enquiry Closure Date"], errors="coerce")
-                    df = df[df["CohortMonth"].notna() & df["ConversionMonth"].notna()]
+
+    # 2) Create monthly Periods
                     df["CohortMonth"]     = df["Enquiry Date"].dt.to_period("M")
                     df["ConversionMonth"] = df["Enquiry Closure Date"].dt.to_period("M")
+
+    # 3) Drop rows where either period is missing
                     df = df[df["CohortMonth"].notna() & df["ConversionMonth"].notna()].copy()
-                    df["CohortIndex"] = (df["ConversionMonth"] - df["CohortMonth"]).apply(lambda x: x.n)
-                    cc = (
+
+    # 4) Compute CohortIndex safely
+                    diff = df["ConversionMonth"] - df["CohortMonth"]
+                    df["CohortIndex"] = diff.map(lambda x: x.n)
+
+    # 5) Build counts and pivot
+                    cohort_counts = (
                         df.groupby(["CohortMonth","CohortIndex"])["Enquiry No"]
-                        .count().reset_index(name="Converted")
+                          .count().reset_index(name="Converted")
                     )
-                    cs = (
+                    cohort_size = (
                         filtered_df.groupby(filtered_df["Enquiry Date"].dt.to_period("M"))["Enquiry No"]
-                        .count().rename("Total").reset_index()
-                        .rename(columns={"Enquiry Date":"CohortMonth"})
+                                   .count().rename("Total")
+                                   .reset_index()
+                                   .rename(columns={"Enquiry Date":"CohortMonth"})
                     )
-                    cohort = pd.merge(cc, cs, on="CohortMonth")
-                    cohort["ConversionRate"] = cohort["Converted"]/cohort["Total"]*100
-                    pivot = cohort.pivot(index="CohortMonth", columns="CohortIndex",
-                                         values="ConversionRate").fillna(0)
+                    cohort = pd.merge(cohort_counts, cohort_size, on="CohortMonth")
+                    cohort["ConversionRate"] = cohort["Converted"] / cohort["Total"] * 100
+
+                    pivot = cohort.pivot(
+                    index="CohortMonth",
+                    columns="CohortIndex",
+                    values="ConversionRate"
+                    ).fillna(0)
+
                     st.write("Conversion Rate (%) by Cohort Month & Months Since Enquiry")
                     st.dataframe(pivot.round(1), use_container_width=True)
-                    hm = px.imshow(
+
+                    heat = px.imshow(
                         pivot,
                         labels=dict(x="Months Since Enquiry", y="Cohort Month", color="Conv %"),
                         title="Cohort Conversion Heatmap",
                         aspect="auto"
                     )
-                    st.plotly_chart(hm, use_container_width=True)
+                    st.plotly_chart(heat, use_container_width=True)
+
         except Exception as e:
             if DEBUG:
                 st.error("Error in Insights tab")
