@@ -125,7 +125,7 @@ if not st.session_state.get("logged_in", False):
                 st.session_state["user"]      = u
                 st.session_state["role"]      = m.iloc[0]["Role"]
                 log_event(u, "Login")
-                st.experimental_rerun()
+                st.rerun()
             else:
                 st.error("Invalid credentials")
     st.stop()
