@@ -126,7 +126,7 @@ if not st.session_state["logged_in"]:
                     "role": m.iloc[0]["Role"]
                 })
                 log_event(u, "Login")
-                st.experimental_rerun()
+                st.rerun()
             else:
                 st.error("Invalid credentials")
     st.stop()
@@ -140,7 +140,7 @@ role         = st.session_state["role"]
 with st.sidebar:
     if st.button("Logout"):
         st.session_state.clear()
-        st.experimental_rerun()
+        st.rerun()
 
     with st.expander("Filters", expanded=True):
         st.header("Filter Leads")
@@ -406,7 +406,7 @@ with tabs[4]:
                     log_event(current_user,"New Lead Uploaded",name)
                     st.success(f"Lead '{name}' added.")
                 st.session_state.upload_idx += 1
-                st.experimental_rerun()
+                st.rerun()
 
 # --- Lead Update ---
 with tabs[5]:
@@ -459,7 +459,7 @@ with tabs[5]:
                 st.cache_data.clear()
                 log_event(current_user,"Lead Updated",f"{enq} -> {new_stage}")
                 st.success("Lead updated.")
-                st.experimental_rerun()
+                st.rerun()
 
 # --- Insights (Dealer Segmentation) ---
 with tabs[6]:
@@ -506,7 +506,7 @@ if role=="Admin":
             st.success(f"{len(combo)-orig} added.")
             st.cache_data.clear()
             log_event(current_user,"Historical Upload",f"{len(combo)-orig}")
-            st.experimental_rerun()
+            st.rerun()
 
         st.markdown("---")
         # Reset Data
@@ -516,7 +516,7 @@ if role=="Admin":
             st.success("Data wiped.")
             st.cache_data.clear()
             log_event(current_user,"Dashboard Reset")
-            st.experimental_rerun()
+            st.rerun()
 
         st.markdown("---")
         # Audit Logs
@@ -541,7 +541,7 @@ if role=="Admin":
                         users_df.to_csv("users.csv", index=False)
                         log_event(current_user,"User Added",nu)
                         st.success(f"Added {nu}.")
-                        st.experimental_rerun()
+                        st.rerun()
         to_del = st.multiselect("Delete Users", [u for u in users_df["Username"] if u!=current_user])
         if st.button("Delete Selected"):
             if to_del:
@@ -549,7 +549,7 @@ if role=="Admin":
                 users_df.to_csv("users.csv", index=False)
                 log_event(current_user,"User Deleted",",".join(to_del))
                 st.success(f"Deleted {', '.join(to_del)}.")
-                st.experimental_rerun()
+                st.rerun()
 
         st.markdown("---")
         # User Activity
