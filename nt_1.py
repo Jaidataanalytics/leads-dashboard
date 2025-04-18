@@ -440,94 +440,44 @@ with st.container():
                 st.error("Error in Lead Update tab")
                 st.exception(e)
 
-# --- Insights Tab ---
-with st.container():
-    with st.spinner("Computing Insights..."):
-        try:
-            with tabs[6]:
-                insight_tabs = st.tabs(["Dealer Segmentation","Cohort Analysis"])
+# ──────────────────────────────────────────────────────────────────────────────
+# Insights Tab: Dealer Segmentation only (Cohort Analysis removed)
+# ──────────────────────────────────────────────────────────────────────────────
+with tabs[6]:
+    st.subheader("Insights")
 
-                with insight_tabs[0]:
-                    st.subheader("Dealer Segmentation (K‑Means)")
-                    stats = (
-                        filtered_df.groupby("Dealer")["Enquiry No"]
-                        .agg(Total_Leads="count").reset_index()
-                    )
-                    stats["Conversion %"] = (
-                        filtered_df.groupby("Dealer")["Enquiry Stage"]
-                        .apply(lambda x: x.isin(won_stages).sum()/len(x)*100).values
-                    )
-                    stats = stats[stats["Total_Leads"]>=5]
-                    if len(stats) >= 3:
-                        X = stats[["Total_Leads","Conversion %"]]
-                        labels = KMeans(n_clusters=3, random_state=0).fit_predict(X)
-                        stats["Cluster"] = labels.astype(str)
-                        fig = px.scatter(
-                            stats, x="Total_Leads", y="Conversion %",
-                            color="Cluster", hover_data=["Dealer"],
-                            title="Dealer Clusters by Volume & Conversion"
-                        )
-                        st.plotly_chart(fig, use_container_width=True)
-                        st.dataframe(stats, use_container_width=True)
-                    else:
-                        st.info(">=3 dealers with ≥5 leads needed to cluster.")
+    # Dealer Segmentation (K‑Means)
+    st.markdown("#### Dealer Segmentation")
+    stats = (
+        filtered_df.groupby("Dealer")["Enquiry No"]
+        .agg(Total_Leads="count")
+        .reset_index()
+    )
+    stats["Conversion %"] = (
+        filtered_df.groupby("Dealer")["Enquiry Stage"]
+        .apply(lambda x: x.isin(won_stages).sum()/len(x)*100)
+        .values
+    )
+    # require at least 3 dealers with 5+ leads
+    stats = stats[stats["Total_Leads"]>=5]
+    if len(stats) >= 3:
+        X = stats[["Total_Leads","Conversion %"]]
+        labels = KMeans(n_clusters=3, random_state=0).fit_predict(X)
+        stats["Cluster"] = labels.astype(str)
 
-                with insight_tabs[1]:
-                    st.subheader("Cohort Analysis")
+        fig = px.scatter(
+            stats, x="Total_Leads", y="Conversion %",
+            color="Cluster", hover_data=["Dealer"],
+            title="Dealer Clusters by Volume & Conversion"
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        st.dataframe(stats, use_container_width=True)
+    else:
+        st.info("Not enough data (≥3 dealers with ≥5 leads) to cluster.")
 
-    # 1) Filter to won leads and coerce to datetime
-                    df = filtered_df[filtered_df["Enquiry Stage"].isin(won_stages)].copy()
-                    df["Enquiry Date"]            = pd.to_datetime(df["Enquiry Date"], errors="coerce")
-                    df["Enquiry Closure Date"]    = pd.to_datetime(df["Enquiry Closure Date"], errors="coerce")
-
-    # 2) Drop rows missing either date
-                    df = df[df["Enquiry Date"].notna() & df["Enquiry Closure Date"].notna()]
-
-    # 3) Build Period columns
-                    df["CohortMonth"]     = df["Enquiry Date"].dt.to_period("M")
-                    df["ConversionMonth"] = df["Enquiry Closure Date"].dt.to_period("M")
-
-    # 4) Compute month‐difference via ordinal
-                    df["CohortIndex"] = (
-                        df["ConversionMonth"].map(lambda p: p.ordinal)
-        -                 df["CohortMonth"].map(lambda p: p.ordinal)
-                    )
-
-    # 5) Aggregate and pivot
-                    cohort_counts = (
-                        df.groupby(["CohortMonth","CohortIndex"])["Enquiry No"]
-                          .count().reset_index(name="Converted")
-                    )
-                    cohort_size = (
-                        filtered_df
-                        .groupby(filtered_df["Enquiry Date"].dt.to_period("M"))["Enquiry No"]
-                        .count().rename("Total")
-                        .reset_index().rename(columns={"Enquiry Date":"CohortMonth"})
-                    )
-                    cohort = pd.merge(cohort_counts, cohort_size, on="CohortMonth")
-                    cohort["ConversionRate"] = cohort["Converted"] / cohort["Total"] * 100
-
-                    pivot = cohort.pivot(
-                        index="CohortMonth",
-                        columns="CohortIndex",
-                        values="ConversionRate"
-                    ).fillna(0)
-
-                    st.write("Conversion Rate (%) by Cohort Month & Months Since Enquiry")
-                    st.dataframe(pivot.round(1), use_container_width=True)
-
-                    heat = px.imshow(
-                        pivot,
-                        labels=dict(x="Months Since Enquiry", y="Cohort Month", color="Conv %"),
-                        title="Cohort Conversion Heatmap",
-                        aspect="auto"
-                    )
-                    st.plotly_chart(heat, use_container_width=True)
-
-        except Exception as e:
-            if DEBUG:
-                st.error("Error in Insights tab")
-                st.exception(e)
+    st.markdown(
+        "_Cohort Analysis has been temporarily removed to avoid NaT‑related errors._"
+    )
 
 # --- Admin Panel ---
 if role=="Admin":
