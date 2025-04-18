@@ -4,4 +4,4 @@ plotly
 openpyxl
 streamlit-aggrid
 streamlit-lottie
-scikit‑learn
+scikit-learn
