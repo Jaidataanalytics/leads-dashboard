@@ -470,21 +470,40 @@ if role=="Admin":
                 st.rerun()
         st.markdown("---")
         # Historical Upload
-        hf = st.file_uploader("Upload Historical Leads (xlsx/csv)", type=["xlsx","csv"], key="upload_historical_file")
-        if hf:
-            if hf.name.endswith(".xlsx"):
-                hdf = pd.read_excel(hf, engine="openpyxl")
-            else:
-                hdf = pd.read_csv(hf)
-            orig = len(leads_df)
-            combo = pd.concat([leads_df, hdf], ignore_index=True)
-            combo.drop_duplicates(subset=["Enquiry No"], keep="first", inplace=True)
-            added = len(combo) - orig
-            leads_df[:] = combo
-            leads_df.to_csv("leads.csv", index=False)
-            log_event(current_user,"Historical Data Upload",f"{added} added")
-            st.success(f"{added} new leads added.")
-            st.rerun()
+       # Historical Upload (only on button click)
+hf = st.file_uploader(
+    "Upload Historical Leads (xlsx/csv)",
+    type=["xlsx","csv"],
+    key="upload_historical_file"
+)
+if hf:
+    if st.button("Process Historical Upload", key="hist_submit"):
+        # read incoming file
+        if hf.name.endswith(".xlsx"):
+            hdf = pd.read_excel(hf, engine="openpyxl")
+        else:
+            hdf = pd.read_csv(hf)
+
+        # concat & dedupe
+        orig = len(leads_df)
+        combo = pd.concat([leads_df, hdf], ignore_index=True)
+        combo.drop_duplicates(subset=["Enquiry No"], keep="first", inplace=True)
+        added = len(combo) - orig
+
+        # overwrite master and clear cache
+        leads_df[:] = combo
+        leads_df.to_csv("leads.csv", index=False)
+        st.cache_data.clear()
+
+        log_event(current_user, "Historical Data Upload", f"{added} added")
+        st.success(f"{added} new leads added.")
+
+        # reset uploader so it doesn’t re‑fire
+        st.session_state.pop("upload_historical_file", None)
+
+        # rerun to pick up new data
+        st.rerun()
+
         st.markdown("---")
         # Audit Logs
         audit = pd.read_csv("audit_logs.csv")
