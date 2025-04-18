@@ -4,10 +4,11 @@ import pandas as pd
 import plotly.express as px
 from plotly import graph_objects as go
 from st_aggrid import AgGrid, GridOptionsBuilder
+from sklearn.cluster import KMeans
 from datetime import datetime
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Page config & CSS
+# Page config & CSS (including mobile responsiveness)
 # ──────────────────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Leads Dashboard", layout="wide")
 st.markdown("""
@@ -19,11 +20,16 @@ st.markdown("""
 .card-icon { font-size:32px; margin-bottom:8px; }
 .card-value{ font-size:24px; font-weight:600; }
 .card-title{ font-size:12px; color:#ddd; }
+/* mobile: stack cards vertically */
+@media (max-width:600px) {
+  .cards-container { flex-direction:column !important; gap:8px !important; }
+  .card { width:100% !important; }
+}
 </style>
 """, unsafe_allow_html=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Ensure log files
+# Ensure log files exist & helpers
 # ──────────────────────────────────────────────────────────────────────────────
 def ensure_file(path, cols):
     if not os.path.exists(path):
@@ -47,7 +53,6 @@ def log_audit(user, action, enq, field, old, new, details=""):
 # ──────────────────────────────────────────────────────────────────────────────
 @st.cache_data
 def load_data():
-    # drop duplicate columns
     tmp = pd.read_csv("leads.csv", nrows=0)
     leads = pd.read_csv(
         "leads.csv",
@@ -57,23 +62,19 @@ def load_data():
     ).loc[:, ~tmp.columns.duplicated()]
     leads["Enquiry Date"] = pd.to_datetime(leads["Enquiry Date"], errors="coerce")
 
-    # drop unused cols
+    # drop unused columns
     drop_cols = ["Corporate Name","Tehsil","Pincode","PAN NO.",
                  "Events","Finance Required","Finance Company"]
     leads.drop(columns=[c for c in drop_cols if c in leads.columns], inplace=True)
 
-    # ensure questionnaire cols
+    # ensure questionnaire & other fields exist
     for i in range(1,6):
         col = f"Question{i}"
         if col not in leads.columns:
             leads[col] = ""
-
-    # ensure other fields
     defaults = {
-        "Remarks": "",
-        "No of Follow-ups": 0,
-        "Next Action": "",
-        "Planned Followup Date": pd.NaT
+        "Remarks": "", "No of Follow-ups": 0,
+        "Next Action": "", "Planned Followup Date": pd.NaT
     }
     for col, default in defaults.items():
         if col not in leads.columns:
@@ -83,25 +84,23 @@ def load_data():
     return leads, users
 
 leads_df, users_df = load_data()
-
 # ──────────────────────────────────────────────────────────────────────────────
-# Session / Login
+# Session state & Login
 # ──────────────────────────────────────────────────────────────────────────────
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
 current_user = st.session_state.get("user")
-role = st.session_state.get("role")
+role         = st.session_state.get("role")
 
 if not st.session_state["logged_in"]:
     def _on_enter(): st.session_state["trigger_login"] = True
-    c1,c2,c3 = st.columns([1,2,1])
+    c1, c2, c3 = st.columns([1,2,1])
     with c2:
         st.title("Please log in")
         u = st.text_input("Username", key="login_user")
         p = st.text_input("Password", type="password",
                          key="login_pass", on_change=_on_enter)
-        btn = st.button("Login")
-        if btn or st.session_state.pop("trigger_login", False):
+        if st.button("Login") or st.session_state.pop("trigger_login", False):
             m = users_df[(users_df["Username"]==u)&(users_df["Password"]==p)]
             if not m.empty:
                 st.session_state.update({
@@ -110,49 +109,50 @@ if not st.session_state["logged_in"]:
                     "role": m.iloc[0]["Role"]
                 })
                 log_event(u, "Login")
-                st.rerun()
+                st.experimental_rerun()
             else:
                 st.error("Invalid credentials")
     st.stop()
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Sidebar: Filters
+# Sidebar: Logout & Filters (collapsed on mobile)
 # ──────────────────────────────────────────────────────────────────────────────
 with st.sidebar:
     if st.button("Logout"):
         st.session_state.clear()
-        st.rerun()
+        st.experimental_rerun()
 
-    st.header("Filters")
-    FILTERS = [
-        ("State","State","f1"),
-        ("City","Location","f2"),
-        ("Dealer","Dealer","f3"),
-        ("Employee","Employee Name","f4"),
-        ("Segment","Segment","f5")
-    ]
-    selected = {}
-    for label,col,key in FILTERS:
-        vals = sorted(leads_df[col].dropna().unique())
-        choice = st.selectbox(label, ["All"]+vals, key=key)
-        selected[col] = vals if choice=="All" else [choice]
+    with st.expander("Filters", expanded=True):
+        st.header("Filter Leads")
+        FILTERS = [
+            ("State","State","f1"),
+            ("City","Location","f2"),
+            ("Dealer","Dealer","f3"),
+            ("Employee","Employee Name","f4"),
+            ("Segment","Segment","f5")
+        ]
+        selected = {}
+        for label, col, key in FILTERS:
+            vals   = sorted(leads_df[col].dropna().unique())
+            choice = st.selectbox(label, ["All"]+vals, key=key)
+            selected[col] = vals if choice=="All" else [choice]
 
-    # KVA slider
-    if pd.notna(leads_df["KVA"]).any():
-        mn,mx = int(leads_df["KVA"].min()), int(leads_df["KVA"].max())
-    else:
-        mn,mx = 0,1
-    if mn>=mx: mx=mn+1
-    kva_range = st.slider("KVA Range", mn, mx, (mn,mx), key="f6")
+        # KVA slider
+        if pd.notna(leads_df["KVA"]).any():
+            mn,mx = int(leads_df["KVA"].min()), int(leads_df["KVA"].max())
+        else:
+            mn,mx = 0,1
+        if mn>=mx: mx=mn+1
+        kva_range = st.slider("KVA Range", mn, mx, (mn,mx), key="f6")
 
-    # Date range
-    today = datetime.today().date()
-    first = today.replace(day=1)
-    dates = st.date_input("Enquiry Date Range", [first,today], key="f7")
-    if isinstance(dates,(list,tuple)) and len(dates)==2:
-        start_date, end_date = dates
-    else:
-        start_date, end_date = first, today
+        # Date range
+        today = datetime.today().date()
+        first = today.replace(day=1)
+        dates = st.date_input("Enquiry Date Range", [first,today], key="f7")
+        if isinstance(dates,(list,tuple)) and len(dates)==2:
+            start_date, end_date = dates
+        else:
+            start_date, end_date = first, today
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Apply filters
@@ -167,66 +167,68 @@ def get_filtered(df, sel, kva, sd, ed):
     return d
 
 filtered_df = get_filtered(leads_df, selected, kva_range, start_date, end_date)
-log_event(current_user,"Filter Applied",
-          f"{selected}, KVA={kva_range}, Dates={start_date}–{end_date}")
+log_event(
+    current_user, "Filter Applied",
+    f"{selected}, KVA={kva_range}, Dates={start_date}–{end_date}"
+)
 
-open_stages  = ["Prospecting","Qualified"]
-won_stages   = ["Closed-Won","Order Booked"]
-lost_stages  = ["Closed-Dropped","Closed-Lost"]
-
-tabs = ["KPI","Charts","Top Dealers","Top Employees","Upload New Lead","Lead Update"]
-if role=="Admin": tabs.append("Admin")
+open_stages = ["Prospecting","Qualified"]
+won_stages  = ["Closed-Won","Order Booked"]
+lost_stages = ["Closed-Dropped","Closed-Lost"]
+# ──────────────────────────────────────────────────────────────────────────────
+# Main Tabs (including new “Insights”)
+# ──────────────────────────────────────────────────────────────────────────────
+tabs = ["KPI","Charts","Top Dealers","Top Employees",
+        "Upload New Lead","Lead Update","Insights"]
+if role=="Admin":
+    tabs.append("Admin")
 tabs = st.tabs(tabs)
 
-# ──────────────────────────────────────────────────────────────────────────────
-# KPI Tab
-# ──────────────────────────────────────────────────────────────────────────────
+# --- KPI Tab (drill‐through clickable cards) ---
 with tabs[0]:
     st.subheader("Key Performance Indicators")
-    total      = len(filtered_df)
-    open_cnt   = filtered_df["Enquiry Stage"].isin(open_stages).sum()
-    won_cnt    = filtered_df["Enquiry Stage"].isin(won_stages).sum()
-    lost_cnt   = filtered_df["Enquiry Stage"].isin(lost_stages).sum()
-    conv_pct   = f"{(won_cnt/total*100):.1f}%"    if total else "0%"
-    closed_pct = f"{((won_cnt+lost_cnt)/total*100):.1f}%" if total else "0%"
+    total    = len(filtered_df)
+    open_cnt = filtered_df["Enquiry Stage"].isin(open_stages).sum()
+    won_cnt  = filtered_df["Enquiry Stage"].isin(won_stages).sum()
+    lost_cnt = filtered_df["Enquiry Stage"].isin(lost_stages).sum()
+    conv_pct = (won_cnt/total*100) if total else 0
+    closed_pct = ((won_cnt+lost_cnt)/total*100) if total else 0
 
+    cols = st.columns(6)
     cards = [
-        ("📈","Total Leads", total),
-        ("🕒","Open Leads",  open_cnt),
-        ("❌","Lost Leads",  lost_cnt),
-        ("🏆","Won Leads",   won_cnt),
-        ("🔄","Conv %",      conv_pct),
-        ("✅","Closed %",    closed_pct),
+        ("All",   total, "All"),
+        ("Open",  open_cnt, "Open"),
+        ("Lost",  lost_cnt, "Lost"),
+        ("Won",   won_cnt, "Won"),
+        ("Conv %", f"{conv_pct:.1f}%", None),
+        ("Closed %", f"{closed_pct:.1f}%", None),
     ]
-    html = '<div class="cards-container">'
-    for icon,title,val in cards:
-        html += f'''
-          <div class="card">
-            <div class="card-icon">{icon}</div>
-            <div class="card-value">{val}</div>
-            <div class="card-title">{title}</div>
-          </div>'''
-    html += '</div>'
-    st.markdown(html, unsafe_allow_html=True)
+    for col, (title, val, drill) in zip(cols, cards):
+        if drill and col.button(f"{val}\n{title}", key=f"drill_{title}"):
+            st.session_state["drill"] = drill
+        else:
+            col.markdown(f"<div class='card'><div class='card-icon'>{title}</div>"
+                         f"<div class='card-value'>{val}</div>"
+                         f"<div class='card-title'>{title}</div></div>",
+                         unsafe_allow_html=True)
 
-    choice = st.radio("View details for:", ["All","Open","Lost","Won"],
-                      horizontal=True, key="kpi_drill")
-    if choice=="All":
+    drill = st.session_state.get("drill", "All")
+    if drill=="All":
         ddf = filtered_df
-    elif choice=="Open":
+    elif drill=="Open":
         ddf = filtered_df[filtered_df["Enquiry Stage"].isin(open_stages)]
-    elif choice=="Lost":
+    elif drill=="Lost":
         ddf = filtered_df[filtered_df["Enquiry Stage"].isin(lost_stages)]
     else:
         ddf = filtered_df[filtered_df["Enquiry Stage"].isin(won_stages)]
 
+    st.write(f"### Showing: {drill} Leads")
     gb = GridOptionsBuilder.from_dataframe(ddf)
     gb.configure_pagination(paginationAutoPageSize=True)
     gb.configure_default_column(enableValue=True, sortable=True, filter=True)
     AgGrid(ddf, gridOptions=gb.build(), enable_enterprise_modules=False)
-# ──────────────────────────────────────────────────────────────────────────────
-# Charts Tab
-# ──────────────────────────────────────────────────────────────────────────────
+
+# --- Charts Tab ---
 with tabs[1]:
     st.subheader("Leads Visualization")
     counts = filtered_df["Enquiry Stage"].value_counts().reindex(
@@ -234,10 +236,12 @@ with tabs[1]:
     )
     funnel_vals = (
         [counts[s] for s in open_stages] +
-        [counts[won_stages[0]] + counts[won_stages[1]]] +
-        [counts[lost_stages[0]] + counts[lost_stages[1]]]
+        [counts[won_stages[0]]+counts[won_stages[1]]] +
+        [counts[lost_stages[0]]+counts[lost_stages[1]]]
     )
-    fig = go.Figure(go.Funnel(y=["Prospecting","Qualified","Won","Lost"], x=funnel_vals))
+    fig = go.Figure(go.Funnel(
+        y=["Prospecting","Qualified","Won","Lost"], x=funnel_vals
+    ))
     fig.update_layout(title="Lead Pipeline Funnel")
     st.plotly_chart(fig, use_container_width=True)
 
@@ -248,7 +252,10 @@ with tabs[1]:
         .rename_axis("Dealer")
         .reset_index(name="Leads")
     )
-    st.plotly_chart(px.bar(top_d, x="Dealer", y="Leads", title="Top 10 Dealers"), use_container_width=True)
+    st.plotly_chart(
+        px.bar(top_d, x="Dealer", y="Leads", title="Top 10 Dealers"),
+        use_container_width=True
+    )
 
     gran = st.selectbox("Time Series Granularity", ["Daily","Weekly","Monthly"], key="ts_gran")
     freq = {"Daily":"D","Weekly":"W","Monthly":"M"}[gran]
@@ -260,15 +267,14 @@ with tabs[1]:
     )
     ts_df[f"MA({win})"] = ts_df["Leads"].rolling(win, min_periods=1).mean()
     st.plotly_chart(
-        px.line(ts_df, x="Enquiry Date", y=["Leads",f"MA({win})"],
-                labels={"value":"Count","variable":"Metric"},
-                title=f"{gran} Leads & {win}-Period MA"),
-        use_container_width=True
+        px.line(
+            ts_df, x="Enquiry Date", y=["Leads",f"MA({win})"],
+            labels={"value":"Count","variable":"Metric"},
+            title=f"{gran} Leads & {win}-Period MA"
+        ), use_container_width=True
     )
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Top Dealers & Employees
-# ──────────────────────────────────────────────────────────────────────────────
+# --- Top Dealers & Top Employees Tabs ---
 def top5(df, by):
     agg = df.groupby(by).agg(
         Total_Leads=("Enquiry No","count"),
@@ -285,16 +291,14 @@ with tabs[2]:
 with tabs[3]:
     st.subheader("Top 5 Employees")
     st.table(top5(filtered_df, "Employee Name"))
-
 # ──────────────────────────────────────────────────────────────────────────────
-# Upload New Lead
+# Upload New Lead Tab
 # ──────────────────────────────────────────────────────────────────────────────
 with tabs[4]:
     st.subheader("Upload New Lead")
-    upload_file = st.file_uploader("Upload leads Excel (xlsx)", type="xlsx",
-                                   key="upload_new_lead_file")
-    if upload_file:
-        df_new = pd.read_excel(upload_file, engine="openpyxl")
+    uf = st.file_uploader("Upload leads Excel (xlsx)", type="xlsx", key="upload_new_lead_file")
+    if uf:
+        df_new = pd.read_excel(uf, engine="openpyxl")
         for i in range(1,6):
             col = f"Question{i}"
             if col not in df_new.columns:
@@ -313,10 +317,10 @@ with tabs[4]:
                                   ["under construction","nearly constructed","constructed","planning"],
                                   key=f"q1_{idx}")
                 q2 = st.selectbox("Q2. Contact person",
-                                  ["Owner","Manager","Purchase Dept","Other"], key=f"q2_{idx}")
+                                  ["Owner","Manager","Purchase Dept","Other"],
+                                  key=f"q2_{idx}")
                 q3 = st.selectbox("Q3. Decision maker?", ["Yes","No"], key=f"q3_{idx}")
-                q4 = st.selectbox("Q4. Customer orientation",
-                                  ["Price","Quality"], key=f"q4_{idx}")
+                q4 = st.selectbox("Q4. Customer orientation", ["Price","Quality"], key=f"q4_{idx}")
                 q5 = st.selectbox("Q5. Who decides?",
                                   ["contact person","owner","manager","purchase head"],
                                   key=f"q5_{idx}")
@@ -339,10 +343,10 @@ with tabs[4]:
                     log_event(current_user,"New Lead Uploaded",name)
                     st.success(f"Lead '{name}' added.")
                 st.session_state.upload_idx += 1
-                st.rerun()
+                st.experimental_rerun()
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Lead Update
+# Lead Update Tab
 # ──────────────────────────────────────────────────────────────────────────────
 with tabs[5]:
     st.subheader("Lead Update")
@@ -351,7 +355,7 @@ with tabs[5]:
         st.info("No open leads.")
     else:
         search = st.text_input("Search Lead (Name or Enq No)", key="update_search")
-        opts = (open_df["Enquiry No"].astype(str) + " - " + open_df["Name"]).tolist()
+        opts   = (open_df["Enquiry No"].astype(str)+" - "+open_df["Name"]).tolist()
         if search:
             opts = [o for o in opts if search.lower() in o.lower()]
         if not opts:
@@ -376,7 +380,7 @@ with tabs[5]:
                            else datetime.today().date()),
                     key="update_date"
                 )
-                new_fu = st.number_input("No of Follow-ups",
+                new_fu  = st.number_input("No of Follow-ups",
                                          min_value=0,
                                          value=int(row.get("No of Follow-ups",0)),
                                          key="update_fu")
@@ -392,7 +396,7 @@ with tabs[5]:
                     "No of Follow-ups": new_fu,
                     "Next Action": new_act
                 }
-                for field,new_val in updates.items():
+                for field, new_val in updates.items():
                     old_val = leads_df.at[idx, field]
                     if (pd.isna(old_val) and new_val is not None) or (old_val != new_val):
                         log_audit(current_user,"Update",enq,field,old_val,new_val,"Lead field changed")
@@ -407,7 +411,68 @@ with tabs[5]:
                 st.cache_data.clear()
                 log_event(current_user,"Lead Updated",f"{enq} -> {new_stage}")
                 st.success("Lead updated successfully.")
-                st.rerun()
+                st.experimental_rerun()
+# ──────────────────────────────────────────────────────────────────────────────
+# Insights Tab: Dealer Segmentation & Cohort Analysis
+# ──────────────────────────────────────────────────────────────────────────────
+with tabs[6]:
+    insight_tabs = st.tabs(["Dealer Segmentation","Cohort Analysis"])
+
+    # Dealer Segmentation
+    with insight_tabs[0]:
+        st.subheader("Dealer Segmentation (K‑Means)")
+        stats = (
+            filtered_df.groupby("Dealer")["Enquiry No"]
+            .agg(Total_Leads="count").reset_index()
+        )
+        stats["Conversion %"] = (
+            filtered_df.groupby("Dealer")["Enquiry Stage"]
+            .apply(lambda x: x.isin(won_stages).sum()/len(x)*100).values
+        )
+        stats = stats[stats["Total_Leads"]>=5]
+        if len(stats) >= 3:
+            X = stats[["Total_Leads","Conversion %"]]
+            labels = KMeans(n_clusters=3, random_state=0).fit_predict(X)
+            stats["Cluster"] = labels.astype(str)
+            fig = px.scatter(
+                stats, x="Total_Leads", y="Conversion %",
+                color="Cluster", hover_data=["Dealer"],
+                title="Dealer Clusters by Volume & Conversion"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            st.dataframe(stats, use_container_width=True)
+        else:
+            st.info("Not enough data (≥3 dealers with ≥5 leads) to cluster.")
+
+    # Cohort Analysis
+    with insight_tabs[1]:
+        st.subheader("Cohort Analysis")
+        df = filtered_df[filtered_df["Enquiry Stage"].isin(won_stages)].copy()
+        df["CohortMonth"]     = df["Enquiry Date"].dt.to_period("M")
+        df["ConversionMonth"] = df["Enquiry Closure Date"].dt.to_period("M")
+        df["CohortIndex"] = (df["ConversionMonth"] - df["CohortMonth"]).apply(lambda x: x.n)
+        cohort_counts = (
+            df.groupby(["CohortMonth","CohortIndex"])["Enquiry No"]
+            .count().reset_index(name="Converted")
+        )
+        cohort_size = (
+            filtered_df.groupby(filtered_df["Enquiry Date"].dt.to_period("M"))["Enquiry No"]
+            .count().rename("Total").reset_index()
+            .rename(columns={"Enquiry Date":"CohortMonth"})
+        )
+        cohort = pd.merge(cohort_counts, cohort_size, on="CohortMonth")
+        cohort["ConversionRate"] = cohort["Converted"]/cohort["Total"]*100
+        pivot = cohort.pivot(index="CohortMonth", columns="CohortIndex",
+                             values="ConversionRate").fillna(0)
+        st.write("Conversion Rate (%) by Cohort Month & Months Since Enquiry")
+        st.dataframe(pivot.round(1), use_container_width=True)
+        heat = px.imshow(
+            pivot,
+            labels=dict(x="Months Since Enquiry", y="Cohort Month", color="Conv %"),
+            title="Cohort Conversion Heatmap",
+            aspect="auto"
+        )
+        st.plotly_chart(heat, use_container_width=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Admin Panel
