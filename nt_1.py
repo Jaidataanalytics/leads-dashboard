@@ -348,12 +348,36 @@ with tabs[0]:
             st.write(f"**Next Action:** {row.get('Next Action', '')}")
 
     # Summary table (unchanged)…
+   # ─────────────────────────────────────────────────────────────────────────
+    # Summary table (re‐ordered columns)
+    # ─────────────────────────────────────────────────────────────────────────
     if not ddf.empty:
-        gb = GridOptionsBuilder.from_dataframe(ddf)
+        # 1) Define your front‐of‐table preference
+        pref = [
+            "Name",
+            "Dealer",
+            "Employee Name",
+            "Segment",
+            # pick one of these location columns if present
+            ( "Location" 
+              if "Location" in ddf.columns 
+              else ("Area Office" if "Area Office" in ddf.columns else "District")
+            ),
+            "KVA",
+        ]
+
+        # 2) Build ordered list: preferred first (if they exist), then the rest
+        ordered_cols = [c for c in pref if c in ddf.columns] \
+                     + [c for c in ddf.columns if c not in pref]
+
+        ordered = ddf[ordered_cols]
+
+        # 3) Render via AgGrid as before
+        gb = GridOptionsBuilder.from_dataframe(ordered)
         gb.configure_pagination(paginationAutoPageSize=True)
         gb.configure_default_column(enableValue=True, sortable=True, filter=True)
         AgGrid(
-            ddf,
+            ordered,
             gridOptions=gb.build(),
             enable_enterprise_modules=False,
         )
