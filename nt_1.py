@@ -286,32 +286,8 @@ with tabs[0]:
     ordered = ordered[pref_cols + other_cols + ["index"]]
 
     # ── configure AgGrid for single-row selection ───────────────────────────
-    gb = GridOptionsBuilder.from_dataframe(ordered)
-    gb.configure_pagination(paginationAutoPageSize=True)
-    gb.configure_default_column(enableValue=True, sortable=True, filter=True)
-    gb.configure_selection("single", use_checkbox=True)
-    # hide the index column in the grid
-    gb.configure_column("index", hide=True)
-
-    grid_resp = AgGrid(
-         ordered,
-         gridOptions=gb.build(),
-         enable_enterprise_modules=True,
-         allow_unsafe_jscode=True,             # required for selection callbacks
-         update_mode=GridUpdateMode.SELECTION_CHANGED,
-         data_return_mode=DataReturnMode.SELECTED,
-     )
-    st.write("🔍 selected_rows:", grid_resp.get("selected_rows"))
-
-
-    selected = grid_resp.get("selected_rows", [])
-    if isinstance(selected, list) and len(selected) > 0:
-        sel = selected[0]
-        orig_idx = sel["index"]  # this maps back to leads_df
-    # use an expander “mini‑window” :
-        with st.expander(f"📋 Lead #{sel['Enquiry No']} Snapshot", expanded=True):
-            # snapshot info
-            st.markdown("### Lead Details (click to view/edit)")
+ 
+    st.markdown("### Lead Details (click to view/edit)")
 
     # Build options
     opts = (
