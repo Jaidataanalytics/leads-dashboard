@@ -260,12 +260,12 @@ if role=="Admin": tabs.append("Admin")
 tabs = st.tabs(tabs)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# KPI Tab
+# KPI Tab (edit form removed)
 # ──────────────────────────────────────────────────────────────────────────────
 with tabs[0]:
     st.subheader("Key Performance Indicators")
 
-    # KPI cards
+    # KPI cards (unchanged)…
     total = len(filtered_df)
     open_cnt = filtered_df["Enquiry Stage"].isin(open_stages).sum()
     won_cnt = filtered_df["Enquiry Stage"].isin(won_stages).sum()
@@ -292,7 +292,7 @@ with tabs[0]:
     html += "</div>"
     st.markdown(html, unsafe_allow_html=True)
 
-    # Drill‑down filter
+    # Drill‑down filter (unchanged)…
     choice = st.radio(
         "Details for:", ["All", "Open", "Lost", "Won"],
         horizontal=True, key="kpi_drill"
@@ -306,7 +306,7 @@ with tabs[0]:
     else:
         ddf = filtered_df[filtered_df["Enquiry Stage"].isin(won_stages)]
 
-    # Search & select a lead (single‑select multiselect)
+    # Search & select a lead snapshot
     st.markdown("### Lead Details (search & select below)")
     opts = (
         ddf["Enquiry No"].astype(str)
@@ -324,13 +324,12 @@ with tabs[0]:
     if chosen:
         enq_no, _ = chosen[0].split(" – ", 1)
         row = leads_df[leads_df["Enquiry No"].astype(str) == enq_no].iloc[0]
-        idx = row.name
 
         with st.expander(f"📋 Lead #{enq_no} Snapshot", expanded=True):
-            # Snapshot info
             st.markdown("**Lead Snapshot**")
             st.write(f"**Lead Age (Days):** {row.get('Lead Age (Days)', 'N/A')}")
 
+            # Core info
             for col in (
                 "Enquiry No", "Name", "Dealer", "Employee Name",
                 "Enquiry Stage", "Phone Number", "Email"
@@ -339,8 +338,7 @@ with tabs[0]:
 
             # Questionnaire answers
             for i in range(1, 6):
-                qcol = f"Question{i}"
-                st.write(f"**{qcol}:** {row.get(qcol, '')}")
+                st.write(f"**Question{i}:** {row.get(f'Question{i}', '')}")
 
             # Follow‑up info
             pf = pd.to_datetime(row.get("Planned Followup Date"), errors="coerce")
@@ -349,64 +347,7 @@ with tabs[0]:
             st.write(f"**No of Follow‑ups:** {row.get('No of Follow‑ups', 0)}")
             st.write(f"**Next Action:** {row.get('Next Action', '')}")
 
-            st.markdown("---")
-            st.markdown("**Edit Lead**")
-
-            with st.form("kpi_modal_form"):
-                stages = list(filtered_df["Enquiry Stage"].dropna().unique())
-                new_stage = st.selectbox(
-                    "Enquiry Stage", stages,
-                    index=stages.index(row["Enquiry Stage"])
-                )
-                new_rem = st.text_area("Remarks", row.get("Remarks", ""))
-                default_follow = (
-                    pf.date() if pd.notna(pf)
-                    else datetime.today().date()
-                )
-                new_date = st.date_input(
-                    "Next Follow‑up Date", default_follow
-                )
-                new_fu = st.number_input(
-                    "No of Follow‑ups", min_value=0,
-                    value=int(row.get("No of Follow‑ups", 0))
-                )
-                new_act = st.text_input(
-                    "Next Action", row.get("Next Action", "")
-                )
-                submitted = st.form_submit_button("Save Changes")
-
-            if submitted:
-                updates = {
-                    "Enquiry Stage": new_stage,
-                    "Remarks": new_rem,
-                    "Planned Followup Date": pd.to_datetime(new_date),
-                    "No of Follow‑ups": new_fu,
-                    "Next Action": new_act,
-                }
-                for field, new_val in updates.items():
-                    old_val = leads_df.at[idx, field]
-                    if (pd.isna(old_val) and new_val is None) or (old_val == new_val):
-                        continue
-                    leads_df.at[idx, field] = new_val
-                    log_audit(
-                        current_user, "KPI Modal Update",
-                        enq_no, field, old_val, new_val
-                    )
-
-                if new_stage in won_stages:
-                    leads_df.at[idx, "EnquiryStatus"] = "Converted"
-                    leads_df.at[idx, "Enquiry Closure Date"] = datetime.now()
-                elif new_stage in lost_stages:
-                    leads_df.at[idx, "EnquiryStatus"] = "Closed"
-                    leads_df.at[idx, "Enquiry Closure Date"] = datetime.now()
-
-                leads_df.to_csv("leads.csv", index=False)
-                st.cache_data.clear()
-                log_event(current_user, "KPI Modal Save", enq_no)
-                st.success("Lead updated via KPI modal.")
-                st.experimental_rerun()
-
-    # Summary table
+    # Summary table (unchanged)…
     if not ddf.empty:
         gb = GridOptionsBuilder.from_dataframe(ddf)
         gb.configure_pagination(paginationAutoPageSize=True)
@@ -418,7 +359,6 @@ with tabs[0]:
         )
     else:
         st.info("No leads to display.")
-
 
 # --- Charts Tab ---
 ### ── REPLACE YOUR ENTIRE CHARTS TAB WITH THIS BLOCK ────────────────────────
