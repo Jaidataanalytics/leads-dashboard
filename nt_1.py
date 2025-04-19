@@ -321,9 +321,10 @@ with tabs[1]:
                 .reset_index(name="MetricValue")
             )
             if metric == "Conversion":
-                agg["MetricValue"] = agg["MetricValue"].round(1)  # one decimal place
-            if metric == "Age":
-                agg["MetricValue"] = agg["MetricValue"].round(1)  # one decimal place
+                agg["MetricValue"] = agg["MetricValue"].round(1)
+            elif metric == "Lead Age (Days)":
+        # show whole days
+                agg["MetricValue"] = agg["MetricValue"].round(0).astype(int)
 
 
     
