@@ -347,7 +347,7 @@ with tabs[1]:
     # 3️⃣  Metric selector
     metric_opt = st.selectbox(
         "Metric for all Top‑10 charts",
-        ["Total", "Open", "Closed", "Conversion"],
+        ["Total", "Open", "Closed", "Conversion", "Age"],
         key="top10_metric",
     )
 
