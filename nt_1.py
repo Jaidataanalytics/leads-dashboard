@@ -176,6 +176,13 @@ with st.sidebar:
 filtered_df = get_filtered(leads_df, selected, kva_range, start_date, end_date)
 log_event(current_user, "Filter Applied",
           f"{selected}, KVA={kva_range}, Dates={start_date}–{end_date}")
+# ── compute how many days each lead has been open ─────────────────────────
+today = pd.Timestamp.now()
+filtered_df["Lead Age (Days)"] = (
+    (filtered_df["Enquiry Closure Date"].fillna(today)
+     - filtered_df["Enquiry Date"])
+    .dt.days
+)
 
 # Employee sees only leads whose Employee Name first token matches OR they uploaded
 if role == "Employee":
