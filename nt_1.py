@@ -85,8 +85,8 @@ def load_data():
             leads[col] = default
 
     # Preserve any existing 'Uploaded by'; if missing, init blank
-    if "Uploaded by " not in leads.columns:
-        leads["Uploaded by "] = ""
+    if "Uploaded by" not in leads.columns:
+        leads["Uploaded by"] = ""
 
     users = pd.read_csv("users.csv")
     return leads, users
@@ -126,7 +126,7 @@ if not st.session_state["logged_in"]:
                     "role": m.iloc[0]["Role"]
                 })
                 log_event(u, "Login")
-                st.rerun()
+                st.experimental_rerun()
             else:
                 st.error("Invalid credentials")
     st.stop()
@@ -140,7 +140,7 @@ role         = st.session_state["role"]
 with st.sidebar:
     if st.button("Logout"):
         st.session_state.clear()
-        st.rerun()
+        st.experimental_rerun()
 
     with st.expander("Filters", expanded=True):
         st.header("Filter Leads")
@@ -176,14 +176,18 @@ with st.sidebar:
 filtered_df = get_filtered(leads_df, selected, kva_range, start_date, end_date)
 log_event(current_user, "Filter Applied",
           f"{selected}, KVA={kva_range}, Dates={start_date}–{end_date}")
-if role == "Employee":
-    user_l = current_user.lower()
-    # 1) exact match on who uploaded it
-    mask_upload = filtered_df["Uploaded by "].str.lower() == user_l
-    # 2) any case‐insensitive substring match against Employee Name
-    mask_name   = filtered_df["Employee Name"].str.lower().str.contains(user_l)
-    filtered_df = filtered_df[mask_upload | mask_name]
 
+# Employee sees only leads whose Employee Name first token matches OR they uploaded
+if role == "Employee":
+    fn = current_user.split()[0].lower()
+    mask_name   = (
+        filtered_df["Employee Name"]
+          .str.split().str[0]
+          .str.lower()
+          .eq(fn)
+    )
+    mask_upload = filtered_df["Uploaded by"].str.lower().str.contains(fn, na=False)
+    filtered_df = filtered_df[mask_name | mask_upload]
 
 open_stages = ["Prospecting","Qualified"]
 won_stages  = ["Closed-Won","Order Booked"]
@@ -233,36 +237,13 @@ with tabs[0]:
         ddf = filtered_df[filtered_df["Enquiry Stage"].isin(lost_stages)]
     else:
         ddf = filtered_df[filtered_df["Enquiry Stage"].isin(won_stages)]
-        # ── Column order requested by you ──────────────────────────────
-    preferred = [
-        "Name",           # 1  Lead name
-        "Dealer",         # 2  Dealer handling the lead
-        "Employee Name",  # 3  Employee
-        "Segment",        # 4  Segment
-        "Location",       # 5  Area / City  (fallbacks handled below)
-        "KVA"             # 6  KVA
-    ]
 
-# If your dataset uses “Area Office” or “District” instead of “Location”,
-# pick the first one that actually exists:
-    if "Location" not in ddf.columns:
-        for alt in ["Area Office", "District"]:
-            if alt in ddf.columns:
-                preferred[4] = alt
-                break
-
-# Build the ordered dataframe
-    remaining = [c for c in ddf.columns if c not in preferred]
-    ordered_df = ddf[preferred + remaining]
-
-# ── Show the grid ──────────────────────────────────────────────
-    gb = GridOptionsBuilder.from_dataframe(ordered_df)
+    gb = GridOptionsBuilder.from_dataframe(ddf)
     gb.configure_pagination(paginationAutoPageSize=True)
     gb.configure_default_column(enableValue=True, sortable=True, filter=True)
     AgGrid(ddf, gridOptions=gb.build(), enable_enterprise_modules=False)
 
 # --- Charts Tab ---
-### ⬇ REPLACE YOUR ENTIRE CHARTS‑TAB BLOCK WITH THIS ##########################
 ### ── REPLACE YOUR ENTIRE CHARTS TAB WITH THIS BLOCK ────────────────────────
 with tabs[1]:
     st.subheader("Leads Visualisations")
@@ -352,21 +333,6 @@ with tabs[1]:
         st.plotly_chart(top10(filtered_df, "Segment", metric_opt), use_container_width=True)
 ### ── END REPLACEMENT ────────────────────────────────────────────────────────
 
-
-    gran = st.selectbox("Granularity", ["Daily","Weekly","Monthly"], key="ts_gran")
-    freq = {"Daily":"D","Weekly":"W","Monthly":"M"}[gran]
-    win  = {"D":7,"W":4,"M":3}[freq]
-    ts_df = (
-        filtered_df.set_index("Enquiry Date")
-        .resample(freq).size().rename("Leads")
-        .to_frame().reset_index()
-    )
-    ts_df[f"MA({win})"] = ts_df["Leads"].rolling(win, min_periods=1).mean()
-    st.plotly_chart(px.line(ts_df, x="Enquiry Date", y=["Leads",f"MA({win})"],
-                 labels={"variable":"Metric","value":"Count"},
-                 title=f"{gran} Leads & {win}-pt MA"),
-                     use_container_width=True)
-
 # --- Top Dealers & Top Employees ---
 def top5(df, by):
     agg = df.groupby(by).agg(
@@ -428,7 +394,7 @@ with tabs[4]:
                     log_event(current_user,"New Lead Uploaded",name)
                     st.success(f"Lead '{name}' added.")
                 st.session_state.upload_idx += 1
-                st.rerun()
+                st.experimental_rerun()
 
 # --- Lead Update ---
 with tabs[5]:
@@ -481,7 +447,7 @@ with tabs[5]:
                 st.cache_data.clear()
                 log_event(current_user,"Lead Updated",f"{enq} -> {new_stage}")
                 st.success("Lead updated.")
-                st.rerun()
+                st.experimental_rerun()
 
 # --- Insights (Dealer Segmentation) ---
 with tabs[6]:
@@ -528,7 +494,7 @@ if role=="Admin":
             st.success(f"{len(combo)-orig} added.")
             st.cache_data.clear()
             log_event(current_user,"Historical Upload",f"{len(combo)-orig}")
-            st.rerun()
+            st.experimental_rerun()
 
         st.markdown("---")
         # Reset Data
@@ -538,7 +504,7 @@ if role=="Admin":
             st.success("Data wiped.")
             st.cache_data.clear()
             log_event(current_user,"Dashboard Reset")
-            st.rerun()
+            st.experimental_rerun()
 
         st.markdown("---")
         # Audit Logs
@@ -563,7 +529,7 @@ if role=="Admin":
                         users_df.to_csv("users.csv", index=False)
                         log_event(current_user,"User Added",nu)
                         st.success(f"Added {nu}.")
-                        st.rerun()
+                        st.experimental_rerun()
         to_del = st.multiselect("Delete Users", [u for u in users_df["Username"] if u!=current_user])
         if st.button("Delete Selected"):
             if to_del:
@@ -571,7 +537,7 @@ if role=="Admin":
                 users_df.to_csv("users.csv", index=False)
                 log_event(current_user,"User Deleted",",".join(to_del))
                 st.success(f"Deleted {', '.join(to_del)}.")
-                st.rerun()
+                st.experimental_rerun()
 
         st.markdown("---")
         # User Activity
