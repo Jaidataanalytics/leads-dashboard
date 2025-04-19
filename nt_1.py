@@ -277,11 +277,13 @@ with tabs[0]:
         ddf = filtered_df[filtered_df["Enquiry Stage"].isin(won_stages)]
 
     # ── prepare ordered DF + preserve original index for selection ─────────
-    ordered = ddf.copy().reset_index()  # now 'index' column references leads_df
-    # reorder columns as you like (Name, Dealer, …)
-    pref = ["Name","Dealer","Employee Name","Segment","Location","KVA"]
-    cols = [c for c in pref if c in ordered.columns] + [c for c in ordered.columns if c not in pref]
-    ordered = ordered[cols + ["index"]]   # keep 'index' at end
+    ordered = ddf.copy().reset_index()
+
+    pref_cols = [c for c in ["Name","Dealer","Employee Name","Segment","Location","KVA"]
+                 if c in ordered.columns]
+    other_cols = [c for c in ordered.columns
+                  if c not in pref_cols and c != "index"]
+    ordered = ordered[pref_cols + other_cols + ["index"]]
 
     # ── configure AgGrid for single-row selection ───────────────────────────
     gb = GridOptionsBuilder.from_dataframe(ordered)
