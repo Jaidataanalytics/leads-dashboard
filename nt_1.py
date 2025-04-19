@@ -311,25 +311,34 @@ with tabs[0]:
     # use an expander “mini‑window” :
         with st.expander(f"📋 Lead #{sel['Enquiry No']} Snapshot", expanded=True):
             # snapshot info
-            st.markdown("**Lead Details**")
-            snapshot_cols = ["Enquiry No","Name","Dealer","Employee Name",
-                             "Enquiry Stage","Phone Number","Email"]
-            for col in snapshot_cols:
-                if col in sel:
-                    st.write(f"**{col}:** {sel[col]}")
+            st.markdown("### Lead Details (click to view/edit)")
+
+    # Build options
+    opts = (
+        filtered_df["Enquiry No"].astype(str)
+        + " – "
+        + filtered_df["Name"]
+    ).tolist()
+    chosen = st.selectbox("Choose a lead", ["None"] + opts, key="kpi_lead_select")
+
+    if chosen and chosen != "None":
+        enq_no, name = chosen.split(" – ", 1)
+        # find that row in the master df
+        row = leads_df[leads_df["Enquiry No"].astype(str) == enq_no].iloc[0]
+        idx = row.name
+
+        with st.expander(f"📋 Lead #{enq_no} Snapshot", expanded=True):
+            st.markdown("**Lead Snapshot**")
+            for col in ("Enquiry No","Name","Dealer","Employee Name","Enquiry Stage","Phone Number","Email"):
+                st.write(f"**{col}:** {row.get(col,'')}")
 
             st.markdown("---")
             st.markdown("**Edit Lead**")
-            st.write("DEBUG selected_rows:", grid_resp["selected_rows"])
 
-            # load the full row from the master DataFrame
-            row = leads_df.loc[orig_idx]
-
-            with st.form("modal_update_form"):
+            with st.form("kpi_modal_form"):
                 stages = list(filtered_df["Enquiry Stage"].dropna().unique())
                 new_stage = st.selectbox("Enquiry Stage", stages, index=stages.index(row["Enquiry Stage"]))
                 new_rem   = st.text_area("Remarks", row.get("Remarks",""))
-                # coerce date and default
                 pf = pd.to_datetime(row.get("Planned Followup Date"), errors="coerce")
                 default_follow = pf.date() if pd.notna(pf) else datetime.today().date()
                 new_date  = st.date_input("Next Follow‑up Date", default_follow)
@@ -346,25 +355,37 @@ with tabs[0]:
                     "Next Action": new_act,
                 }
                 for field, new_val in updates.items():
-                    old_val = leads_df.at[orig_idx, field]
-                    if pd.isna(old_val) and new_val is None:
+                    old_val = leads_df.at[idx, field]
+                    if (pd.isna(old_val) and new_val is None) or (old_val == new_val):
                         continue
-                    if old_val != new_val:
-                        leads_df.at[orig_idx, field] = new_val
-                        log_audit(current_user, "Modal Update", row["Enquiry No"], field, old_val, new_val)
+                    leads_df.at[idx, field] = new_val
+                    log_audit(current_user, "KPI Modal Update", enq_no, field, old_val, new_val)
 
                 if new_stage in won_stages:
-                    leads_df.at[orig_idx, "EnquiryStatus"] = "Converted"
-                    leads_df.at[orig_idx, "Enquiry Closure Date"] = datetime.now()
+                    leads_df.at[idx, "EnquiryStatus"] = "Converted"
+                    leads_df.at[idx, "Enquiry Closure Date"] = datetime.now()
                 elif new_stage in lost_stages:
-                    leads_df.at[orig_idx, "EnquiryStatus"] = "Closed"
-                    leads_df.at[orig_idx, "Enquiry Closure Date"] = datetime.now()
+                    leads_df.at[idx, "EnquiryStatus"] = "Closed"
+                    leads_df.at[idx, "Enquiry Closure Date"] = datetime.now()
 
                 leads_df.to_csv("leads.csv", index=False)
                 st.cache_data.clear()
-                log_event(current_user, "Modal Update Save", f"Enq No {row['Enquiry No']}")
-                st.success("Lead updated via modal.")
-                st.rerun()
+                log_event(current_user, "KPI Modal Save", enq_no)
+                st.success("Lead updated via KPI modal.")
+                st.experimental_rerun()
+
+    # ── Summary table ───────────────────────────────────────────────────
+    if not filtered_df.empty:
+        gb = GridOptionsBuilder.from_dataframe(filtered_df)
+        gb.configure_pagination(paginationAutoPageSize=True)
+        gb.configure_default_column(enableValue=True, sortable=True, filter=True)
+        AgGrid(
+            filtered_df,
+            gridOptions=gb.build(),
+            enable_enterprise_modules=False,
+        )
+    else:
+        st.info("No leads to display.")
 
 # --- Charts Tab ---
 ### ── REPLACE YOUR ENTIRE CHARTS TAB WITH THIS BLOCK ────────────────────────
