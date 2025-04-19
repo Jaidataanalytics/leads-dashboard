@@ -137,36 +137,76 @@ role         = st.session_state["role"]
 # ──────────────────────────────────────────────────────────────────────────────
 # Sidebar Filters
 # ──────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
+# Sidebar Filters  (now hierarchical: State → City → Dealer → Employee → Segment)
+# ──────────────────────────────────────────────────────────────────────────────
 with st.sidebar:
     if st.button("Logout"):
         st.session_state.clear()
-        st.rerun()
+        st.experimental_rerun()
 
     with st.expander("Filters", expanded=True):
         st.header("Filter Leads")
-        FILTERS = [
-            ("State","State","f1"),
-            ("City","Location","f2"),
-            ("Dealer","Dealer","f3"),
-            ("Employee","Employee Name","f4"),
-            ("Segment","Segment","f5"),
-        ]
-        selected = {}
-        for label,col,key in FILTERS:
-            vals   = sorted(leads_df[col].dropna().unique())
-            choice = st.selectbox(label, ["All"]+vals, key=key)
-            selected[col] = vals if choice=="All" else [choice]
 
-        mn = int(leads_df["KVA"].min()) if pd.notna(leads_df["KVA"]).any() else 0
-        mx = int(leads_df["KVA"].max()) if pd.notna(leads_df["KVA"]).any() else 1
-        if mn>=mx: mx=mn+1
-        kva_range = st.slider("KVA Range", mn, mx, (mn,mx), key="f6")
+        # 1) State
+        all_states = sorted(leads_df["State"].dropna().unique())
+        state_sel = st.selectbox("State", ["All"] + all_states, key="f_state")
+        if state_sel == "All":
+            df_state = leads_df
+        else:
+            df_state = leads_df[leads_df["State"] == state_sel]
+
+        # 2) City (Location)
+        all_cities = sorted(df_state["Location"].dropna().unique())
+        city_sel = st.selectbox("City", ["All"] + all_cities, key="f_city")
+        if city_sel == "All":
+            df_city = df_state
+        else:
+            df_city = df_state[df_state["Location"] == city_sel]
+
+        # 3) Dealer
+        all_dealers = sorted(df_city["Dealer"].dropna().unique())
+        dealer_sel = st.selectbox("Dealer", ["All"] + all_dealers, key="f_dealer")
+        if dealer_sel == "All":
+            df_dealer = df_city
+        else:
+            df_dealer = df_city[df_city["Dealer"] == dealer_sel]
+
+        # 4) Employee
+        all_emps = sorted(df_dealer["Employee Name"].dropna().unique())
+        emp_sel = st.selectbox("Employee", ["All"] + all_emps, key="f_emp")
+        if emp_sel == "All":
+            df_emp = df_dealer
+        else:
+            df_emp = df_dealer[df_dealer["Employee Name"] == emp_sel]
+
+        # 5) Segment
+        all_segs = sorted(df_emp["Segment"].dropna().unique())
+        seg_sel = st.selectbox("Segment", ["All"] + all_segs, key="f_seg")
+        if seg_sel == "All":
+            df_seg = df_emp
+        else:
+            df_seg = df_emp[df_emp["Segment"] == seg_sel]
+
+        # Collect selections for filtering
+        selected = {
+            "State":       all_states if state_sel=="All"  else [state_sel],
+            "Location":    sorted(leads_df["Location"].unique()) if city_sel=="All"  else [city_sel],
+            "Dealer":      sorted(leads_df["Dealer"].unique())   if dealer_sel=="All" else [dealer_sel],
+            "Employee Name": all_emps if emp_sel=="All"          else [emp_sel],
+            "Segment":     sorted(leads_df["Segment"].unique())  if seg_sel=="All"    else [seg_sel],
+        }
+
+        # 6) KVA & Date range (unchanged)
+        mn = int(leads_df["KVA"].min() or 0)
+        mx = int(leads_df["KVA"].max() or mn + 1)
+        kva_range = st.slider("KVA Range", mn, mx, (mn, mx), key="f_kva")
 
         today = datetime.today().date()
         first = today.replace(day=1)
-        dates = st.date_input("Enquiry Date Range", [first,today], key="f7")
-        if isinstance(dates,(list,tuple)) and len(dates)==2:
-            start_date, end_date = dates
+        date_vals = st.date_input("Enquiry Date Range", (first, today), key="f_date")
+        if isinstance(date_vals, (list, tuple)) and len(date_vals)==2:
+            start_date, end_date = date_vals
         else:
             start_date, end_date = first, today
 
