@@ -259,14 +259,44 @@ tabs = ["KPI","Charts","Top Dealers","Top Employees",
 if role=="Admin": tabs.append("Admin")
 tabs = st.tabs(tabs)
 
-# --- KPI Tab with row‑selection → modal snapshot & edit form ---
+# ──────────────────────────────────────────────────────────────────────────────
+# KPI Tab
+# ──────────────────────────────────────────────────────────────────────────────
 with tabs[0]:
     st.subheader("Key Performance Indicators")
 
-    # … your KPI cards code remains unchanged …
+    # KPI cards
+    total = len(filtered_df)
+    open_cnt = filtered_df["Enquiry Stage"].isin(open_stages).sum()
+    won_cnt = filtered_df["Enquiry Stage"].isin(won_stages).sum()
+    lost_cnt = filtered_df["Enquiry Stage"].isin(lost_stages).sum()
+    conv_pct = f"{won_cnt / total * 100:.1f}%" if total else "0%"
+    closed_pct = f"{(won_cnt + lost_cnt) / total * 100:.1f}%" if total else "0%"
 
-    # Drill‑down radio + filtered df as before
-    choice = st.radio("Details for:", ["All","Open","Lost","Won"], horizontal=True, key="kpi_drill")
+    html = '<div class="cards-container">'
+    for icon, title, val in [
+        ("📈", "Total Leads", total),
+        ("🕒", "Open Leads", open_cnt),
+        ("❌", "Lost Leads", lost_cnt),
+        ("🏆", "Won Leads", won_cnt),
+        ("🔄", "Conversion %", conv_pct),
+        ("✅", "Closed %", closed_pct),
+    ]:
+        html += (
+            f"<div class='card'>"
+            f"<div class='card-icon'>{icon}</div>"
+            f"<div class='card-value'>{val}</div>"
+            f"<div class='card-title'>{title}</div>"
+            "</div>"
+        )
+    html += "</div>"
+    st.markdown(html, unsafe_allow_html=True)
+
+    # Drill‑down filter
+    choice = st.radio(
+        "Details for:", ["All", "Open", "Lost", "Won"],
+        horizontal=True, key="kpi_drill"
+    )
     if choice == "All":
         ddf = filtered_df
     elif choice == "Open":
@@ -276,50 +306,73 @@ with tabs[0]:
     else:
         ddf = filtered_df[filtered_df["Enquiry Stage"].isin(won_stages)]
 
-    # ── prepare ordered DF + preserve original index for selection ─────────
-    ordered = ddf.copy().reset_index()
-
-    pref_cols = [c for c in ["Name","Dealer","Employee Name","Segment","Location","KVA"]
-                 if c in ordered.columns]
-    other_cols = [c for c in ordered.columns
-                  if c not in pref_cols and c != "index"]
-    ordered = ordered[pref_cols + other_cols + ["index"]]
-
-    # ── configure AgGrid for single-row selection ───────────────────────────
- 
-    st.markdown("### Lead Details (click to view/edit)")
-
-    # Build options
+    # Search & select a lead (single‑select multiselect)
+    st.markdown("### Lead Details (search & select below)")
     opts = (
-        filtered_df["Enquiry No"].astype(str)
-        + " – "
-        + filtered_df["Name"]
+        ddf["Enquiry No"].astype(str)
+        + " – "
+        + ddf["Name"]
     ).tolist()
-    chosen = st.selectbox("Choose a lead", ["None"] + opts, key="kpi_lead_select")
+    chosen = st.multiselect(
+        "Search & select a lead",
+        opts,
+        default=[],
+        max_selections=1,
+        key="kpi_lead_select"
+    )
 
-    if chosen and chosen != "None":
-        enq_no, name = chosen.split(" – ", 1)
-        # find that row in the master df
+    if chosen:
+        enq_no, _ = chosen[0].split(" – ", 1)
         row = leads_df[leads_df["Enquiry No"].astype(str) == enq_no].iloc[0]
         idx = row.name
 
-        with st.expander(f"📋 Lead #{enq_no} Snapshot", expanded=True):
+        with st.expander(f"📋 Lead #{enq_no} Snapshot", expanded=True):
+            # Snapshot info
             st.markdown("**Lead Snapshot**")
-            for col in ("Enquiry No","Name","Dealer","Employee Name","Enquiry Stage","Phone Number","Email","Lead Age (Days)"):
-                st.write(f"**{col}:** {row.get(col,'')}")
+            st.write(f"**Lead Age (Days):** {row.get('Lead Age (Days)', 'N/A')}")
+
+            for col in (
+                "Enquiry No", "Name", "Dealer", "Employee Name",
+                "Enquiry Stage", "Phone Number", "Email"
+            ):
+                st.write(f"**{col}:** {row.get(col, '')}")
+
+            # Questionnaire answers
+            for i in range(1, 6):
+                qcol = f"Question{i}"
+                st.write(f"**{qcol}:** {row.get(qcol, '')}")
+
+            # Follow‑up info
+            pf = pd.to_datetime(row.get("Planned Followup Date"), errors="coerce")
+            pf_str = pf.date().isoformat() if pd.notna(pf) else "N/A"
+            st.write(f"**Planned Follow‑up Date:** {pf_str}")
+            st.write(f"**No of Follow‑ups:** {row.get('No of Follow‑ups', 0)}")
+            st.write(f"**Next Action:** {row.get('Next Action', '')}")
 
             st.markdown("---")
             st.markdown("**Edit Lead**")
 
             with st.form("kpi_modal_form"):
                 stages = list(filtered_df["Enquiry Stage"].dropna().unique())
-                new_stage = st.selectbox("Enquiry Stage", stages, index=stages.index(row["Enquiry Stage"]))
-                new_rem   = st.text_area("Remarks", row.get("Remarks",""))
-                pf = pd.to_datetime(row.get("Planned Followup Date"), errors="coerce")
-                default_follow = pf.date() if pd.notna(pf) else datetime.today().date()
-                new_date  = st.date_input("Next Follow‑up Date", default_follow)
-                new_fu    = st.number_input("No of Follow‑ups", min_value=0, value=int(row.get("No of Follow‑ups",0)))
-                new_act   = st.text_input("Next Action", row.get("Next Action",""))
+                new_stage = st.selectbox(
+                    "Enquiry Stage", stages,
+                    index=stages.index(row["Enquiry Stage"])
+                )
+                new_rem = st.text_area("Remarks", row.get("Remarks", ""))
+                default_follow = (
+                    pf.date() if pd.notna(pf)
+                    else datetime.today().date()
+                )
+                new_date = st.date_input(
+                    "Next Follow‑up Date", default_follow
+                )
+                new_fu = st.number_input(
+                    "No of Follow‑ups", min_value=0,
+                    value=int(row.get("No of Follow‑ups", 0))
+                )
+                new_act = st.text_input(
+                    "Next Action", row.get("Next Action", "")
+                )
                 submitted = st.form_submit_button("Save Changes")
 
             if submitted:
@@ -335,7 +388,10 @@ with tabs[0]:
                     if (pd.isna(old_val) and new_val is None) or (old_val == new_val):
                         continue
                     leads_df.at[idx, field] = new_val
-                    log_audit(current_user, "KPI Modal Update", enq_no, field, old_val, new_val)
+                    log_audit(
+                        current_user, "KPI Modal Update",
+                        enq_no, field, old_val, new_val
+                    )
 
                 if new_stage in won_stages:
                     leads_df.at[idx, "EnquiryStatus"] = "Converted"
@@ -350,18 +406,19 @@ with tabs[0]:
                 st.success("Lead updated via KPI modal.")
                 st.experimental_rerun()
 
-    # ── Summary table ───────────────────────────────────────────────────
-    if not filtered_df.empty:
-        gb = GridOptionsBuilder.from_dataframe(filtered_df)
+    # Summary table
+    if not ddf.empty:
+        gb = GridOptionsBuilder.from_dataframe(ddf)
         gb.configure_pagination(paginationAutoPageSize=True)
         gb.configure_default_column(enableValue=True, sortable=True, filter=True)
         AgGrid(
-            filtered_df,
+            ddf,
             gridOptions=gb.build(),
             enable_enterprise_modules=False,
         )
     else:
         st.info("No leads to display.")
+
 
 # --- Charts Tab ---
 ### ── REPLACE YOUR ENTIRE CHARTS TAB WITH THIS BLOCK ────────────────────────
