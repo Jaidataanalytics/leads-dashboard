@@ -333,35 +333,38 @@ with tabs[1]:
         st.plotly_chart(top10(filtered_df, "Segment", metric_opt), use_container_width=True)
 ### ── END REPLACEMENT ────────────────────────────────────────────────────────
     # ── Trend Analysis ──────────────────────────────────────────────
-    st.subheader("Leads Trend with 7‑day MA")
-    freq = st.radio(
-        "Aggregation",
-        ["Daily", "Weekly", "Monthly"],
-        horizontal=True,
-        key="trend_freq"
-    )
-    # map to pandas resample rule
-    rule = {"Daily":"D", "Weekly":"W", "Monthly":"M"}[freq]
+    # ── Trend Analysis ──────────────────────────────────────────────
+st.subheader("Leads Trend with 7‑day MA")
+freq = st.radio(
+    "Aggregation",
+    ["Daily", "Weekly", "Monthly"],
+    horizontal=True,
+    key="trend_freq",
+)
+rule = {"Daily":"D", "Weekly":"W", "Monthly":"M"}[freq]
 
-    # prepare the series
-    ts = (
-        filtered_df
-          .set_index("Enquiry Date")
-          .resample(rule)
-          .size()
-          .to_frame("count")
-    )
-    ts["7‑day MA"] = ts["count"].rolling(window=7, min_periods=1).mean()
+# Resample, count, compute MA, and reset index so 'Enquiry Date' is a column
+ts = (
+    filtered_df
+      .set_index("Enquiry Date")
+      .resample(rule)
+      .size()
+      .rename("count")
+      .to_frame()
+      .reset_index()
+)
+ts["7‑day MA"] = ts["count"].rolling(window=7, min_periods=1).mean()
 
-    # plot it
-    fig = px.line(
-        ts,
-        x=ts.index,
-        y=["count","7‑day MA"],
-        labels={"value": "Leads", "index": "Date"},
-        title=f"Leads per {freq} with 7‑day Moving Average"
-    )
-    st.plotly_chart(fig, use_container_width=True)
+# Now plot with 'Enquiry Date' as the x‑column
+fig = px.line(
+    ts,
+    x="Enquiry Date",
+    y=["count","7‑day MA"],
+    labels={"value":"Leads","Enquiry Date":"Date"},
+    title=f"Leads per {freq} with 7‑day Moving Average",
+)
+st.plotly_chart(fig, use_container_width=True)
+
 
 
 # --- Top Dealers & Top Employees ---
