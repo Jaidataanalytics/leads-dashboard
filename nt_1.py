@@ -289,14 +289,14 @@ with tabs[0]:
     gb = GridOptionsBuilder.from_dataframe(ordered)
     gb.configure_pagination(paginationAutoPageSize=True)
     gb.configure_default_column(enableValue=True, sortable=True, filter=True)
-    gb.configure_selection("single", use_checkbox=False)
+    gb.configure_selection("single", use_checkbox=True)
     # hide the index column in the grid
     gb.configure_column("index", hide=True)
 
     grid_resp = AgGrid(
          ordered,
          gridOptions=gb.build(),
-         enable_enterprise_modules=False,
+         enable_enterprise_modules=True,
          allow_unsafe_jscode=True,             # required for selection callbacks
          update_mode=GridUpdateMode.SELECTION_CHANGED,
          data_return_mode=DataReturnMode.AS_INPUT,
