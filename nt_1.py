@@ -289,7 +289,7 @@ with tabs[0]:
     gb = GridOptionsBuilder.from_dataframe(ordered)
     gb.configure_pagination(paginationAutoPageSize=True)
     gb.configure_default_column(enableValue=True, sortable=True, filter=True)
-    gb.configure_selection("single", use_checkbox=False, pre_selected_rows=None)
+    gb.configure_selection("single", use_checkbox=False)
     # hide the index column in the grid
     gb.configure_column("index", hide=True)
 
@@ -297,8 +297,9 @@ with tabs[0]:
          ordered,
          gridOptions=gb.build(),
          enable_enterprise_modules=False,
-        update_mode=GridUpdateMode.SELECTION_CHANGED,
-    )
+         allow_unsafe_jscode=True,             # required for selection callbacks
+         update_mode=GridUpdateMode.SELECTION_CHANGED,
+     )
 
     selected = grid_resp["selected_rows"]
     if selected:
