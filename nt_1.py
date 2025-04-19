@@ -334,17 +334,17 @@ with tabs[1]:
 ### ── END REPLACEMENT ────────────────────────────────────────────────────────
     # ── Trend Analysis ──────────────────────────────────────────────
     # ── Trend Analysis ──────────────────────────────────────────────
-st.subheader("Leads Trend with 7‑day MA")
-freq = st.radio(
+        st.subheader("Leads Trend with 7‑day MA")
+    freq = st.radio(
     "Aggregation",
     ["Daily", "Weekly", "Monthly"],
     horizontal=True,
     key="trend_freq",
 )
-rule = {"Daily":"D", "Weekly":"W", "Monthly":"M"}[freq]
+    rule = {"Daily":"D", "Weekly":"W", "Monthly":"M"}[freq]
 
 # Resample, count, compute MA, and reset index so 'Enquiry Date' is a column
-ts = (
+    ts = (
     filtered_df
       .set_index("Enquiry Date")
       .resample(rule)
@@ -353,17 +353,17 @@ ts = (
       .to_frame()
       .reset_index()
 )
-ts["7‑day MA"] = ts["count"].rolling(window=7, min_periods=1).mean()
+    ts["7‑day MA"] = ts["count"].rolling(window=7, min_periods=1).mean()
 
 # Now plot with 'Enquiry Date' as the x‑column
-fig = px.line(
+    fig = px.line(
     ts,
     x="Enquiry Date",
     y=["count","7‑day MA"],
     labels={"value":"Leads","Enquiry Date":"Date"},
     title=f"Leads per {freq} with 7‑day Moving Average",
 )
-st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True)
 
 
 
