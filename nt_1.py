@@ -287,54 +287,40 @@ with tabs[1]:
 
     # 2️⃣  Helper to build Top‑10 charts
     def top10(df, group, metric):
-        """
-        metric ∈ {'Total','Open','Closed','Conversion','Age'}
-        Returns a Plotly figure.
-        """
-        # Age is a simple numeric column, all others use Enquiry Stage lists
-        if metric == "Age":
+        if metric == "Lead Age (Days)":
             agg = (
                 df.groupby(group)["Lead Age (Days)"]
-                  .mean()
-                  .reset_index(name="MetricValue")
-                  .sort_values("MetricValue", ascending=False)
-                  .head(10)
+                .mean()
+                .reset_index(name="MetricValue")
+                .sort_values("MetricValue", ascending=False)
+                .head(10)
             )
         else:
+        # … your existing Total/Open/Closed/Conversion logic …
             stage_lists = df.groupby(group)["Enquiry Stage"].agg(list)
             def value(lst):
-                if metric == "Total":
-                    return len(lst)
-                if metric == "Open":
-                    return sum(s in open_stages for s in lst)
-                if metric == "Closed":
-                    return sum(s in won_stages + lost_stages for s in lst)
-                # metric == "Conversion"
-                total = len(lst)
-                wins  = sum(s in won_stages for s in lst)
-                return wins / total * 100 if total else 0
-
+                if metric=="Total":   return len(lst)
+                if metric=="Open":    return sum(s in open_stages for s in lst)
+                if metric=="Closed":  return sum(s in won_stages+lost_stages for s in lst)
+                t = len(lst); w = sum(s in won_stages for s in lst)
+                return w/t*100 if t else 0
             agg = (
                 stage_lists.apply(value)
-                .sort_values(ascending=False)
-                .head(10)
-                .reset_index(name="MetricValue")
+                           .sort_values(ascending=False)
+                           .head(10)
+                           .reset_index(name="MetricValue")
             )
-            if metric == "Conversion":
-                agg["MetricValue"] = agg["MetricValue"].round(1)
-            elif metric == "Age":
-        # show whole days
-                agg["MetricValue"] = agg["MetricValue"].round(0).astype(int)
 
+    # ── round for display ────────────────────────────────────────
+        if metric == "Conversion":
+            agg["MetricValue"] = agg["MetricValue"].round(1)
+        elif metric == "Lead Age (Days)":
+            agg["MetricValue"] = agg["MetricValue"].round(0).astype(int)
 
-    
-
-        # red bars for both Open and Age
-        bar_color = "red" if metric in ("Open", "Age") else "#1f77b4"
-        y_label   = (
-            "Average Lead Age (Days)"
-            if metric == "Age"
-            else ("Conversion %" if metric == "Conversion" else f"Leads {metric}")
+        bar_color = "red" if metric in ("Open","Lead Age (Days)") else "#1f77b4"
+        ylab = (
+            "Average Lead Age (Days)" if metric=="Lead Age (Days)"
+            else ("Conversion %" if metric=="Conversion" else f"Leads {metric}")
         )
         title = f"Top 10 {group}s by {metric}"
 
@@ -342,8 +328,8 @@ with tabs[1]:
             agg,
             x=group,
             y="MetricValue",
+            labels={group:group, "MetricValue":ylab},
             title=title,
-            labels={group: group, "MetricValue": y_label},
             color_discrete_sequence=[bar_color],
             text="MetricValue",
         )
