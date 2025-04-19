@@ -320,6 +320,10 @@ with tabs[1]:
                 .head(10)
                 .reset_index(name="MetricValue")
             )
+            if metric == "Conversion":
+                agg["MetricValue"] = agg["MetricValue"].round(1)  # one decimal place
+
+    
 
         # red bars for both Open and Age
         bar_color = "red" if metric in ("Open", "Age") else "#1f77b4"
