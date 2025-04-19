@@ -419,9 +419,14 @@ with tabs[5]:
                 stages    = list(filtered_df["Enquiry Stage"].dropna().unique())
                 new_stage = st.selectbox("Enquiry Stage", stages, index=stages.index(row["Enquiry Stage"]), key="update_stage")
                 new_remark= st.text_area("Remarks", value=row.get("Remarks",""), key="update_remarks")
-                new_date  = st.date_input("Next Follow-up Date",
-                                         value=(row["Planned Followup Date"].date() if pd.notna(row["Planned Followup Date"]) else datetime.today().date()),
-                                         key="update_date")
+                pf = pd.to_datetime(row.get("Planned Followup Date", None), errors="coerce")
+                default_date = pf.date() if pd.notna(pf) else datetime.today().date()
+
+                new_date = st.date_input(
+                    "Next Follow‑up Date",
+                     value=default_date,
+                     key="update_date"
+                )
                 new_fu    = st.number_input("No of Follow-ups", min_value=0, value=int(row.get("No of Follow-ups",0)), key="update_fu")
                 new_act   = st.text_input("Next Action", value=row.get("Next Action",""), key="update_action")
                 submitted = st.form_submit_button("Save Changes")
