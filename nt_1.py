@@ -274,50 +274,63 @@ with tabs[1]:
     )
 
     # 2️⃣  Helper to build Top‑10 charts
-    def top10(df: pd.DataFrame, group: str, metric: str):
+    def top10(df, group, metric):
         """
-        metric ∈ {'Total','Open','Closed','Conversion'}
-        Returns figure ready to plot.
+        metric ∈ {'Total','Open','Closed','Conversion','Age'}
+        Returns a Plotly figure.
         """
-        stage_lists = df.groupby(group)["Enquiry Stage"].agg(list)
+        # Age is a simple numeric column, all others use Enquiry Stage lists
+        if metric == "Age":
+            agg = (
+                df.groupby(group)["Lead Age (Days)"]
+                  .mean()
+                  .reset_index(name="MetricValue")
+                  .sort_values("MetricValue", ascending=False)
+                  .head(10)
+            )
+        else:
+            stage_lists = df.groupby(group)["Enquiry Stage"].agg(list)
+            def value(lst):
+                if metric == "Total":
+                    return len(lst)
+                if metric == "Open":
+                    return sum(s in open_stages for s in lst)
+                if metric == "Closed":
+                    return sum(s in won_stages + lost_stages for s in lst)
+                # metric == "Conversion"
+                total = len(lst)
+                wins  = sum(s in won_stages for s in lst)
+                return wins / total * 100 if total else 0
 
-        def value(lst):
-            if metric == "Total":
-                return len(lst)
-            if metric == "Open":
-                return sum(s in open_stages for s in lst)
-            if metric == "Closed":
-                return sum(s in won_stages + lost_stages for s in lst)
-            if metric == "Conversion":
-                t = len(lst)
-                w = sum(s in won_stages for s in lst)
-                return w / t * 100 if t else 0
+            agg = (
+                stage_lists.apply(value)
+                .sort_values(ascending=False)
+                .head(10)
+                .reset_index(name="MetricValue")
+            )
 
-        out = (
-            stage_lists.apply(value)
-            .sort_values(ascending=False)
-            .head(10)
-            .reset_index(name="MetricValue")
+        # red bars for both Open and Age
+        bar_color = "red" if metric in ("Open", "Age") else "#1f77b4"
+        y_label   = (
+            "Average Lead Age (Days)"
+            if metric == "Age"
+            else ("Conversion %" if metric == "Conversion" else f"Leads {metric}")
         )
-
-        bar_color = "red" if metric == "Open" else "#1f77b4"
-        y_title   = "Conversion %" if metric == "Conversion" else f"Leads {metric}"
-        title     = f"Top 10 {group}s by {metric}"
+        title = f"Top 10 {group}s by {metric}"
 
         fig = px.bar(
-            out,
+            agg,
             x=group,
             y="MetricValue",
-            labels={group: group, "MetricValue": y_title},
             title=title,
+            labels={group: group, "MetricValue": y_label},
             color_discrete_sequence=[bar_color],
-            text="MetricValue"  # show values on bars
+            text="MetricValue",
         )
-        fig.update_layout(yaxis_title=y_title)
         if metric == "Conversion":
             fig.update_yaxes(ticksuffix="%")
-
         return fig
+
 
     # 3️⃣  Metric selector
     metric_opt = st.selectbox(
