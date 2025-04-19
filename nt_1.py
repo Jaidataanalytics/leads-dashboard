@@ -377,10 +377,11 @@ with tabs[4]:
                 q5 = st.selectbox("Q5. Who decides?", ["contact person","owner","manager","purchase head"], key=f"q5_{idx}")
                 submitted = st.form_submit_button("Submit Lead")
             if submitted:
-                name, phone = lead["Name"], lead["Phone Number"]
-                exists = ((leads_df["Name"]==name)&(leads_df["Phone Number"]==phone)).any()
+                name = lead["Name"]
+                enq_no = lead["Enquiry No"]
+                exists = (leads_df["Enquiry No"] == enq_no).any()
                 if exists:
-                    st.warning(f"Lead '{name}' exists; skipped.")
+                    st.warning(f"Lead with Enquiry No {enq_no} already exists; skipped.")
                 else:
                     for i, ans in enumerate((q1,q2,q3,q4,q5), start=1):
                         log_audit(current_user,"Create",lead["Enquiry No"], f"Question{i}","",ans,"Questionnaire")
