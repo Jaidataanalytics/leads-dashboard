@@ -305,7 +305,7 @@ with tabs[0]:
 
         with st.expander(f"📋 Lead #{enq_no} Snapshot", expanded=True):
             st.markdown("**Lead Snapshot**")
-            for col in ("Enquiry No","Name","Dealer","Employee Name","Enquiry Stage","Phone Number","Email"):
+            for col in ("Enquiry No","Name","Dealer","Employee Name","Enquiry Stage","Phone Number","Email","Lead Age (Days)"):
                 st.write(f"**{col}:** {row.get(col,'')}")
 
             st.markdown("---")
