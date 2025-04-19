@@ -322,6 +322,9 @@ with tabs[1]:
             )
             if metric == "Conversion":
                 agg["MetricValue"] = agg["MetricValue"].round(1)  # one decimal place
+            if metric == "Age":
+                agg["MetricValue"] = agg["MetricValue"].round(1)  # one decimal place
+
 
     
 
