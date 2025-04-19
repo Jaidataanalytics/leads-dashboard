@@ -3,7 +3,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from plotly import graph_objects as go
-from st_aggrid import AgGrid, GridOptionsBuilder
+from st_aggrid import AgGrid, GridOptionsBuilder,GridUpdateMode
 from sklearn.cluster import KMeans
 from datetime import datetime
 
@@ -294,10 +294,10 @@ with tabs[0]:
     gb.configure_column("index", hide=True)
 
     grid_resp = AgGrid(
-        ordered,
-        gridOptions=gb.build(),
-        enable_enterprise_modules=False, 
-        update_mode="MODEL_CHANGED"
+         ordered,
+         gridOptions=gb.build(),
+         enable_enterprise_modules=False,
+        update_mode=GridUpdateMode.SELECTION_CHANGED,
     )
 
     selected = grid_resp["selected_rows"]
