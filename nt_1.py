@@ -303,8 +303,8 @@ with tabs[0]:
      )
     
 
-    selected = grid_resp["selected_rows"]
-    if selected:
+    selected = grid_resp.get("selected_rows", [])
+    if isinstance(selected, list) and len(selected) > 0:
         sel = selected[0]
         orig_idx = sel["index"]  # this maps back to leads_df
     # use an expander “mini‑window” :
