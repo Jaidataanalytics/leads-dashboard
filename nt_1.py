@@ -315,7 +315,7 @@ with tabs[1]:
         if metric == "Conversion":
             agg["MetricValue"] = agg["MetricValue"].round(1)
         elif metric == "Lead Age (Days)":
-            agg["MetricValue"] = agg["MetricValue"].round(0).astype(int)
+            agg["MetricValue"] = agg["MetricValue"].round(1).astype(int)
 
         bar_color = "red" if metric in ("Open","Lead Age (Days)") else "#1f77b4"
         ylab = (
