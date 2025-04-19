@@ -322,7 +322,7 @@ with tabs[1]:
             )
             if metric == "Conversion":
                 agg["MetricValue"] = agg["MetricValue"].round(1)
-            elif metric == "Lead Age (Days)":
+            elif metric == "Age":
         # show whole days
                 agg["MetricValue"] = agg["MetricValue"].round(0).astype(int)
 
