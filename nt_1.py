@@ -3,7 +3,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from plotly import graph_objects as go
-from st_aggrid import AgGrid, GridOptionsBuilder,GridUpdateMode
+from st_aggrid import AgGrid, GridOptionsBuilder,GridUpdateMode,DataReturnMode
 from sklearn.cluster import KMeans
 from datetime import datetime
 
@@ -299,7 +299,9 @@ with tabs[0]:
          enable_enterprise_modules=False,
          allow_unsafe_jscode=True,             # required for selection callbacks
          update_mode=GridUpdateMode.SELECTION_CHANGED,
+         data_return_mode=DataReturnMode.AS_INPUT,
      )
+    
 
     selected = grid_resp["selected_rows"]
     if selected:
@@ -317,6 +319,7 @@ with tabs[0]:
 
             st.markdown("---")
             st.markdown("**Edit Lead**")
+            st.write("DEBUG selected_rows:", grid_resp["selected_rows"])
 
             # load the full row from the master DataFrame
             row = leads_df.loc[orig_idx]
