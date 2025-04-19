@@ -299,7 +299,7 @@ with tabs[0]:
          enable_enterprise_modules=True,
          allow_unsafe_jscode=True,             # required for selection callbacks
          update_mode=GridUpdateMode.SELECTION_CHANGED,
-         data_return_mode=DataReturnMode.AS_INPUT,
+         data_return_mode=DataReturnMode.FILTERED_AND_SELECTED,
      )
     
 
