@@ -233,8 +233,30 @@ with tabs[0]:
         ddf = filtered_df[filtered_df["Enquiry Stage"].isin(lost_stages)]
     else:
         ddf = filtered_df[filtered_df["Enquiry Stage"].isin(won_stages)]
+        # ── Column order requested by you ──────────────────────────────
+    preferred = [
+        "Name",           # 1  Lead name
+        "Dealer",         # 2  Dealer handling the lead
+        "Employee Name",  # 3  Employee
+        "Segment",        # 4  Segment
+        "Location",       # 5  Area / City  (fallbacks handled below)
+        "KVA"             # 6  KVA
+    ]
 
-    gb = GridOptionsBuilder.from_dataframe(ddf)
+# If your dataset uses “Area Office” or “District” instead of “Location”,
+# pick the first one that actually exists:
+    if "Location" not in ddf.columns:
+        for alt in ["Area Office", "District"]:
+            if alt in ddf.columns:
+                preferred[4] = alt
+                break
+
+# Build the ordered dataframe
+    remaining = [c for c in ddf.columns if c not in preferred]
+    ordered_df = ddf[preferred + remaining]
+
+# ── Show the grid ──────────────────────────────────────────────
+    gb = GridOptionsBuilder.from_dataframe(ordered_df)
     gb.configure_pagination(paginationAutoPageSize=True)
     gb.configure_default_column(enableValue=True, sortable=True, filter=True)
     AgGrid(ddf, gridOptions=gb.build(), enable_enterprise_modules=False)
