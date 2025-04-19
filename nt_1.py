@@ -143,7 +143,7 @@ role         = st.session_state["role"]
 with st.sidebar:
     if st.button("Logout"):
         st.session_state.clear()
-        st.experimental_rerun()
+        st.rerun()
 
     with st.expander("Filters", expanded=True):
         st.header("Filter Leads")
@@ -360,7 +360,7 @@ with tabs[0]:
                 st.cache_data.clear()
                 log_event(current_user, "Modal Update Save", f"Enq No {row['Enquiry No']}")
                 st.success("Lead updated via modal.")
-                st.experimental_rerun()
+                st.rerun()
 
 # --- Charts Tab ---
 ### ── REPLACE YOUR ENTIRE CHARTS TAB WITH THIS BLOCK ────────────────────────
