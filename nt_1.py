@@ -296,8 +296,7 @@ with tabs[0]:
     grid_resp = AgGrid(
         ordered,
         gridOptions=gb.build(),
-        enable_enterprise_modules=False,
-        allow_unsafe_jscode=True, 
+        enable_enterprise_modules=False, 
         update_mode="MODEL_CHANGED"
     )
 
@@ -305,9 +304,8 @@ with tabs[0]:
     if selected:
         sel = selected[0]
         orig_idx = sel["index"]  # this maps back to leads_df
-
-        # ── show modal with snapshot + edit form ──────────────────────────
-        with st.modal(f"Lead #{sel['Enquiry No']} Snapshot", icon="✏️"):
+    # use an expander “mini‑window” :
+    with st.expander(f"📋 Lead #{sel['Enquiry No']} Snapshot", expanded=True):
             # snapshot info
             st.markdown("**Lead Details**")
             snapshot_cols = ["Enquiry No","Name","Dealer","Employee Name",
