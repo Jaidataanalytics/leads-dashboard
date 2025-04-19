@@ -305,7 +305,7 @@ with tabs[0]:
         sel = selected[0]
         orig_idx = sel["index"]  # this maps back to leads_df
     # use an expander “mini‑window” :
-    with st.expander(f"📋 Lead #{sel['Enquiry No']} Snapshot", expanded=True):
+        with st.expander(f"📋 Lead #{sel['Enquiry No']} Snapshot", expanded=True):
             # snapshot info
             st.markdown("**Lead Details**")
             snapshot_cols = ["Enquiry No","Name","Dealer","Employee Name",
