@@ -174,15 +174,27 @@ with st.sidebar:
 # Apply filters + Employee scoping
 # ──────────────────────────────────────────────────────────────────────────────
 filtered_df = get_filtered(leads_df, selected, kva_range, start_date, end_date)
+# 1) coerce both date columns to datetime64 (in case some rows slipped through)
+filtered_df["Enquiry Closure Date"] = pd.to_datetime(
+    filtered_df["Enquiry Closure Date"], errors="coerce"
+)
+filtered_df["Enquiry Date"] = pd.to_datetime(
+    filtered_df["Enquiry Date"], errors="coerce"
+)
+
+# 2) get 'today' as a pandas Timestamp
+today_ts = pd.Timestamp.today().normalize()
+
+# 3) fill NaT on the closure date, and also on enquiry date just in case
+close_series = filtered_df["Enquiry Closure Date"].fillna(today_ts)
+enq_series   = filtered_df["Enquiry Date"].fillna(today_ts)
+
+# 4) subtract series from series, then take the number of days
+filtered_df["Lead Age (Days)"] = (close_series - enq_series).dt.days
 log_event(current_user, "Filter Applied",
           f"{selected}, KVA={kva_range}, Dates={start_date}–{end_date}")
 # ── compute how many days each lead has been open ─────────────────────────
-today = pd.Timestamp.now()
-filtered_df["Lead Age (Days)"] = (
-    (filtered_df["Enquiry Closure Date"].fillna(today)
-     - filtered_df["Enquiry Date"])
-    .dt.days
-)
+
 
 # Employee sees only leads whose Employee Name first token matches OR they uploaded
 if role == "Employee":
