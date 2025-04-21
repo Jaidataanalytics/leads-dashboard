@@ -200,8 +200,13 @@ with st.sidebar:
         }
 
         # 6) KVA & Date range (unchanged)
-        mn = int(leads_df["KVA"].min() or 0)
-        mx = int(leads_df["KVA"].max() or mn + 1)
+        # Determine min/max KVA safely
+        raw_min = leads_df["KVA"].min()
+        raw_max = leads_df["KVA"].max()
+
+        mn = int(raw_min) if pd.notna(raw_min) else 0
+        mx = int(raw_max) if pd.notna(raw_max) else mn + 1
+
         kva_range = st.slider("KVA Range", mn, mx, (mn, mx), key="f_kva")
 
         today = datetime.today().date()
