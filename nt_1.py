@@ -705,6 +705,58 @@ with tabs[6]:
         st.dataframe(stats, use_container_width=True)
     else:
         st.info(f"Not enough dealers (need ≥{n_clusters} with ≥5 leads).")
+        st.markdown("---")
+    st.subheader("Employee Segmentation (K‑Means)")
+
+    # 1) Cluster count slider
+    emp_clusters = st.slider(
+        "Select number of employee clusters:",
+        min_value=2, max_value=6, value=3, step=1, key="emp_clusters"
+    )
+
+    # 2) Build per‑employee stats
+    emp_stats = (
+        filtered_df
+          .groupby("Employee Name")["Enquiry No"]
+          .agg(Total_Leads="count")
+          .reset_index()
+    )
+    emp_stats["Conversion %"] = (
+        filtered_df
+          .groupby("Employee Name")["Enquiry Stage"]
+          .apply(lambda x: x.isin(won_stages).sum() / len(x) * 100)
+          .values
+    )
+
+    # 3) Filter to employees with ≥5 leads
+    emp_stats = emp_stats[emp_stats["Total_Leads"] >= 5]
+
+    # 4) Run K‑Means if enough points
+    if len(emp_stats) >= emp_clusters:
+        X_emp = emp_stats[["Total_Leads", "Conversion %"]]
+        emp_stats["Cluster"] = (
+            KMeans(n_clusters=emp_clusters, random_state=0)
+            .fit_predict(X_emp)
+            .astype(str)
+        )
+
+        # 5) Scatter plot
+        fig_emp = px.scatter(
+            emp_stats,
+            x="Total_Leads",
+            y="Conversion %",
+            color="Cluster",
+            hover_data=["Employee Name"],
+            title=f"Employee Clusters (k={emp_clusters})",
+            labels={"Conversion %":"Conv. %", "Total_Leads":"Leads"}
+        )
+        st.plotly_chart(fig_emp, use_container_width=True)
+
+        # 6) Table
+        st.dataframe(emp_stats, use_container_width=True)
+    else:
+        st.info(f"Not enough employees (need ≥{emp_clusters} with ≥5 leads).")
+
 
 
 # --- Admin Panel ---
