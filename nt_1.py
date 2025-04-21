@@ -756,6 +756,60 @@ with tabs[6]:
         st.dataframe(emp_stats, use_container_width=True)
     else:
         st.info(f"Not enough employees (need ≥{emp_clusters} with ≥5 leads).")
+        st.markdown("---")
+    st.subheader("Regional Segmentation (K‑Means)")
+
+    # 1) Choose grouping level and cluster count
+    region_level = st.selectbox(
+        "Group by:",
+        ["State", "Location"],
+        index=0,
+        key="region_group"
+    )
+    region_clusters = st.slider(
+        "Select number of region clusters:",
+        min_value=2, max_value=6, value=3, step=1, key="region_clusters"
+    )
+
+    # 2) Build per‑region stats
+    grp = filtered_df.groupby(region_level)["Enquiry No"]
+    reg_stats = grp.agg(Total_Leads="count").reset_index()
+    reg_stats["Conversion %"] = (
+        filtered_df
+          .groupby(region_level)["Enquiry Stage"]
+          .apply(lambda x: x.isin(won_stages).sum() / len(x) * 100)
+          .values
+    )
+
+    # 3) Filter to regions with ≥5 leads
+    reg_stats = reg_stats[reg_stats["Total_Leads"] >= 5]
+
+    # 4) Run K‑Means if enough regions
+    if len(reg_stats) >= region_clusters:
+        X_reg = reg_stats[["Total_Leads", "Conversion %"]]
+        reg_stats["Cluster"] = (
+            KMeans(n_clusters=region_clusters, random_state=0)
+            .fit_predict(X_reg)
+            .astype(str)
+        )
+
+        # 5) Scatter plot
+        fig_reg = px.scatter(
+            reg_stats,
+            x="Total_Leads",
+            y="Conversion %",
+            color="Cluster",
+            hover_data=[region_level],
+            title=f"{region_level} Clusters (k={region_clusters})",
+            labels={"Conversion %":"Conv. %", "Total_Leads":"Leads"}
+        )
+        st.plotly_chart(fig_reg, use_container_width=True)
+
+        # 6) Table
+        st.dataframe(reg_stats, use_container_width=True)
+    else:
+        st.info(f"Not enough {region_level.lower()}s (need ≥{region_clusters} with ≥5 leads).")
+
 
 
 
