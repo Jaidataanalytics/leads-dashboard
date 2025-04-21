@@ -6,6 +6,8 @@ from plotly import graph_objects as go
 from st_aggrid import AgGrid, GridOptionsBuilder,GridUpdateMode,DataReturnMode
 from sklearn.cluster import KMeans
 from datetime import datetime
+from datetime import datetime, timedelta
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Page config & CSS
@@ -126,7 +128,7 @@ if not st.session_state["logged_in"]:
                     "role": m.iloc[0]["Role"]
                 })
                 log_event(u, "Login")
-                st.rerun()
+                st.experimental_rerun()
             else:
                 st.error("Invalid credentials")
     st.stop()
@@ -143,7 +145,7 @@ role         = st.session_state["role"]
 with st.sidebar:
     if st.button("Logout"):
         st.session_state.clear()
-        st.rerun()
+        st.experimental_rerun()
 
     with st.expander("Filters", expanded=True):
         st.header("Filter Leads")
@@ -260,43 +262,93 @@ if role=="Admin": tabs.append("Admin")
 tabs = st.tabs(tabs)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# KPI Tab (edit form removed)
-# ──────────────────────────────────────────────────────────────────────────────
+# --- KPI Tab (complete updated code including lead selector & summary table) ---
 with tabs[0]:
     st.subheader("Key Performance Indicators")
 
-    # KPI cards (unchanged)…
-    total = len(filtered_df)
-    open_cnt = filtered_df["Enquiry Stage"].isin(open_stages).sum()
-    won_cnt = filtered_df["Enquiry Stage"].isin(won_stages).sum()
-    lost_cnt = filtered_df["Enquiry Stage"].isin(lost_stages).sum()
-    conv_pct = f"{won_cnt / total * 100:.1f}%" if total else "0%"
-    closed_pct = f"{(won_cnt + lost_cnt) / total * 100:.1f}%" if total else "0%"
+    # 1) Apply all filters except date
+    non_date_df = leads_df.copy()
+    for col, vals in selected.items():
+        non_date_df = non_date_df[non_date_df[col].isin(vals)]
+    non_date_df = non_date_df[
+        (non_date_df["KVA"] >= kva_range[0]) &
+        (non_date_df["KVA"] <= kva_range[1])
+    ]
 
-    html = '<div class="cards-container">'
-    for icon, title, val in [
-        ("📈", "Total Leads", total),
-        ("🕒", "Open Leads", open_cnt),
-        ("❌", "Lost Leads", lost_cnt),
-        ("🏆", "Won Leads", won_cnt),
-        ("🔄", "Conversion %", conv_pct),
-        ("✅", "Closed %", closed_pct),
-    ]:
-        html += (
-            f"<div class='card'>"
-            f"<div class='card-icon'>{icon}</div>"
-            f"<div class='card-value'>{val}</div>"
-            f"<div class='card-title'>{title}</div>"
-            "</div>"
-        )
-    html += "</div>"
-    st.markdown(html, unsafe_allow_html=True)
+    # 2) Time boundaries
+    today = datetime.today()
+    w_start, w_prev = today - timedelta(days=7), today - timedelta(days=14)
+    m_start, m_prev = today - timedelta(days=30), today - timedelta(days=60)
 
-    # Drill‑down filter (unchanged)…
-    choice = st.radio(
-        "Details for:", ["All", "Open", "Lost", "Won"],
-        horizontal=True, key="kpi_drill"
-    )
+    # 3) Count helper
+    def count_in_period(df, start, end, stages=None):
+        sub = df[(df["Enquiry Date"] >= start) & (df["Enquiry Date"] < end)]
+        return sub["Enquiry Stage"].isin(stages).sum() if stages else len(sub)
+
+    # 4) Growth helper
+    def growth(curr, prev):
+        return None if prev == 0 else (curr - prev) / prev * 100
+
+    # Compute week & month for each metric
+    def comps(stages=None):
+        curr_w = count_in_period(non_date_df, w_start, today, stages)
+        prev_w = count_in_period(non_date_df, w_prev, w_start, stages)
+        curr_m = count_in_period(non_date_df, m_start, today, stages)
+        prev_m = count_in_period(non_date_df, m_prev, m_start, stages)
+        return growth(curr_w, prev_w), growth(curr_m, prev_m)
+
+    g_w_total, g_m_total = comps()
+    g_w_open,  g_m_open  = comps(open_stages)
+    g_w_won,   g_m_won   = comps(won_stages)
+    g_w_lost,  g_m_lost  = comps(lost_stages)
+
+    # 5) Current filtered metrics
+    total    = len(filtered_df)
+    open_ct  = filtered_df["Enquiry Stage"].isin(open_stages).sum()
+    won_ct   = filtered_df["Enquiry Stage"].isin(won_stages).sum()
+    lost_ct  = filtered_df["Enquiry Stage"].isin(lost_stages).sum()
+    if filtered_df.empty or filtered_df["Lead Age (Days)"].isna().all():
+        avg_age = 0
+    else:
+        avg_age = int(filtered_df["Lead Age (Days)"].mean())
+
+    # 6) Format percentages
+    def fmt_pct(val):
+        if val is None:
+            return "—"
+        arrow = "▲" if val >= 0 else "▼"
+        return f"{arrow}{val:+.1f}%"
+
+    # 7) Render cards
+    cols = st.columns(5)
+    specs = [
+        ("📈 Total Leads",    total,         "#2C3E50", g_w_total, g_m_total),
+        ("🕒 Open Leads",     open_ct,       "#34495E", g_w_open,  g_m_open),
+        ("🏆 Won Leads",      won_ct,        "#006400", g_w_won,   g_m_won),
+        ("❌ Lost Leads",     lost_ct,       "#8B0000", g_w_lost,  g_m_lost),
+        ("📊 Avg Lead Age",   f"{avg_age} days", "#555555", None, None),
+    ]
+    for col, (title, val, bg, gw, gm) in zip(cols, specs):
+        growth_html = ""
+        if gw is not None:
+            growth_html = f"""
+              <div style='font-size:12px;color:#DDD'>
+                <span style='margin-right:8px'>W: {fmt_pct(gw)}</span>
+                <span>M: {fmt_pct(gm)}</span>
+              </div>
+            """
+        col.markdown(f"""
+            <div style='background:{bg};padding:16px;border-radius:8px;color:#FFF;text-align:center'>
+              <div style='font-size:16px'>{title}</div>
+              <div style='font-size:28px;font-weight:bold;margin:4px'>{val}</div>
+              {growth_html}
+            </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # Drill‑down filter
+    choice = st.radio("Details for:", ["All", "Open", "Lost", "Won"], horizontal=True, key="kpi_drill")
     if choice == "All":
         ddf = filtered_df
     elif choice == "Open":
@@ -306,81 +358,33 @@ with tabs[0]:
     else:
         ddf = filtered_df[filtered_df["Enquiry Stage"].isin(won_stages)]
 
-    # Search & select a lead snapshot
+    # Lead selector & snapshot
     st.markdown("### Lead Details (search & select below)")
-    opts = (
-        ddf["Enquiry No"].astype(str)
-        + " – "
-        + ddf["Name"]
-    ).tolist()
-    chosen = st.multiselect(
-        "Search & select a lead",
-        opts,
-        default=[],
-        max_selections=1,
-        key="kpi_lead_select"
-    )
-
+    opts = (ddf["Enquiry No"].astype(str) + " – " + ddf["Name"]).tolist()
+    chosen = st.multiselect("Search & select a lead", opts, default=[], max_selections=1, key="kpi_lead_select")
     if chosen:
         enq_no, _ = chosen[0].split(" – ", 1)
         row = leads_df[leads_df["Enquiry No"].astype(str) == enq_no].iloc[0]
-
         with st.expander(f"📋 Lead #{enq_no} Snapshot", expanded=True):
-            st.markdown("**Lead Snapshot**")
             st.write(f"**Lead Age (Days):** {row.get('Lead Age (Days)', 'N/A')}")
-
-            # Core info
-            for col in (
-                "Enquiry No", "Name", "Dealer", "Employee Name",
-                "Enquiry Stage", "Phone Number", "Email"
-            ):
-                st.write(f"**{col}:** {row.get(col, '')}")
-
-            # Questionnaire answers
-            for i in range(1, 6):
-                st.write(f"**Question{i}:** {row.get(f'Question{i}', '')}")
-
-            # Follow‑up info
+            for c in ["Enquiry No","Name","Dealer","Employee Name","Enquiry Stage","Phone Number","Email"]:
+                st.write(f"**{c}:** {row.get(c,'')}")
+            for i in range(1,6):
+                st.write(f"**Question{i}:** {row.get(f'Question{i}','')}")
             pf = pd.to_datetime(row.get("Planned Followup Date"), errors="coerce")
-            pf_str = pf.date().isoformat() if pd.notna(pf) else "N/A"
-            st.write(f"**Planned Follow‑up Date:** {pf_str}")
-            st.write(f"**No of Follow‑ups:** {row.get('No of Follow‑ups', 0)}")
-            st.write(f"**Next Action:** {row.get('Next Action', '')}")
+            st.write(f"**Planned Follow‑up Date:** {pf.date().isoformat() if pd.notna(pf) else 'N/A'}")
+            st.write(f"**No of Follow‑ups:** {row.get('No of Follow‑ups',0)}")
+            st.write(f"**Next Action:** {row.get('Next Action','')}")
 
-    # Summary table (unchanged)…
-   # ─────────────────────────────────────────────────────────────────────────
-    # Summary table (re‐ordered columns)
-    # ─────────────────────────────────────────────────────────────────────────
+    # Summary table
     if not ddf.empty:
-        # 1) Define your front‐of‐table preference
-        pref = [
-            "Name",
-            "Dealer",
-            "Employee Name",
-            "Segment",
-            # pick one of these location columns if present
-            ( "Location" 
-              if "Location" in ddf.columns 
-              else ("Area Office" if "Area Office" in ddf.columns else "District")
-            ),
-            "KVA",
-        ]
-
-        # 2) Build ordered list: preferred first (if they exist), then the rest
-        ordered_cols = [c for c in pref if c in ddf.columns] \
-                     + [c for c in ddf.columns if c not in pref]
-
+        pref = ["Name","Dealer","Employee Name","Segment",("Location" if "Location" in ddf.columns else "Area Office")]
+        ordered_cols = [c for c in pref if c in ddf.columns] + [c for c in ddf.columns if c not in pref]
         ordered = ddf[ordered_cols]
-
-        # 3) Render via AgGrid as before
         gb = GridOptionsBuilder.from_dataframe(ordered)
         gb.configure_pagination(paginationAutoPageSize=True)
         gb.configure_default_column(enableValue=True, sortable=True, filter=True)
-        AgGrid(
-            ordered,
-            gridOptions=gb.build(),
-            enable_enterprise_modules=False,
-        )
+        AgGrid(ordered, gridOptions=gb.build(), enable_enterprise_modules=False)
     else:
         st.info("No leads to display.")
 
@@ -577,7 +581,7 @@ with tabs[4]:
                     log_event(current_user,"New Lead Uploaded",name)
                     st.success(f"Lead '{name}' added.")
                 st.session_state.upload_idx += 1
-                st.rerun()
+                st.experimental_rerun()
 
 # --- Lead Update ---
 with tabs[5]:
@@ -635,7 +639,7 @@ with tabs[5]:
                 st.cache_data.clear()
                 log_event(current_user,"Lead Updated",f"{enq} -> {new_stage}")
                 st.success("Lead updated.")
-                st.rerun()
+                st.experimental_rerun()
 
 # --- Insights (Dealer Segmentation) ---
 with tabs[6]:
@@ -682,7 +686,7 @@ if role=="Admin":
             st.success(f"{len(combo)-orig} added.")
             st.cache_data.clear()
             log_event(current_user,"Historical Upload",f"{len(combo)-orig}")
-            st.rerun()
+            st.experimental_rerun()
 
         st.markdown("---")
         # Reset Data
@@ -692,7 +696,7 @@ if role=="Admin":
             st.success("Data wiped.")
             st.cache_data.clear()
             log_event(current_user,"Dashboard Reset")
-            st.rerun()
+            st.experimental_rerun()
 
         st.markdown("---")
         # Audit Logs
@@ -717,7 +721,7 @@ if role=="Admin":
                         users_df.to_csv("users.csv", index=False)
                         log_event(current_user,"User Added",nu)
                         st.success(f"Added {nu}.")
-                        st.rerun()
+                        st.experimental_rerun()
         to_del = st.multiselect("Delete Users", [u for u in users_df["Username"] if u!=current_user])
         if st.button("Delete Selected"):
             if to_del:
@@ -725,7 +729,7 @@ if role=="Admin":
                 users_df.to_csv("users.csv", index=False)
                 log_event(current_user,"User Deleted",",".join(to_del))
                 st.success(f"Deleted {', '.join(to_del)}.")
-                st.rerun()
+                st.experimental_rerun()
 
         st.markdown("---")
         # User Activity
