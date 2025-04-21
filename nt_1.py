@@ -647,27 +647,65 @@ with tabs[5]:
                 st.rerun()
 
 # --- Insights (Dealer Segmentation) ---
+# ──────────────────────────────────────────────────────────────────────────────
+# Insights Tab — Dealer Segmentation with Dynamic Cluster Count
+# ──────────────────────────────────────────────────────────────────────────────
 with tabs[6]:
     st.subheader("Dealer Segmentation (K‑Means)")
+
+    # 1) Let the user pick how many clusters (2–6)
+    n_clusters = st.slider(
+        "Select number of clusters:",
+        min_value=2,
+        max_value=6,
+        value=3,
+        step=1,
+        key="insights_clusters"
+    )
+
+    # 2) Compute per‑dealer stats
     stats = (
-        filtered_df.groupby("Dealer")["Enquiry No"]
-        .agg(Total_Leads="count").reset_index()
+        filtered_df
+          .groupby("Dealer")["Enquiry No"]
+          .agg(Total_Leads="count")
+          .reset_index()
     )
     stats["Conversion %"] = (
-        filtered_df.groupby("Dealer")["Enquiry Stage"]
-        .apply(lambda x: x.isin(won_stages).sum()/len(x)*100).values
+        filtered_df
+          .groupby("Dealer")["Enquiry Stage"]
+          .apply(lambda x: x.isin(won_stages).sum() / len(x) * 100)
+          .values
     )
-    stats = stats[stats["Total_Leads"]>=5]
-    if len(stats)>=3:
-        X = stats[["Total_Leads","Conversion %"]]
-        stats["Cluster"] = KMeans(n_clusters=3, random_state=0).fit_predict(X).astype(str)
-        fig = px.scatter(stats, x="Total_Leads", y="Conversion %",
-                         color="Cluster", hover_data=["Dealer"],
-                         title="Dealer Clusters")
+
+    # 3) Filter out very small dealers
+    stats = stats[stats["Total_Leads"] >= 5]
+
+    # 4) Perform clustering if enough data
+    if len(stats) >= n_clusters:
+        X = stats[["Total_Leads", "Conversion %"]]
+        stats["Cluster"] = (
+            KMeans(n_clusters=n_clusters, random_state=0)
+            .fit_predict(X)
+            .astype(str)
+        )
+
+        # 5) Plot
+        fig = px.scatter(
+            stats,
+            x="Total_Leads",
+            y="Conversion %",
+            color="Cluster",
+            hover_data=["Dealer"],
+            title=f"Dealer Clusters (k={n_clusters})",
+            labels={"Conversion %":"Conv. %", "Total_Leads":"Leads"}
+        )
         st.plotly_chart(fig, use_container_width=True)
+
+        # 6) Show the table
         st.dataframe(stats, use_container_width=True)
     else:
-        st.info("Not enough data (≥3 dealers with ≥5 leads).")
+        st.info(f"Not enough dealers (need ≥{n_clusters} with ≥5 leads).")
+
 
 # --- Admin Panel ---
 if role=="Admin":
