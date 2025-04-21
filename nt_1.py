@@ -7,6 +7,7 @@ from st_aggrid import AgGrid, GridOptionsBuilder,GridUpdateMode,DataReturnMode
 from sklearn.cluster import KMeans
 from datetime import datetime
 from datetime import datetime, timedelta
+from datetime import date
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -209,13 +210,25 @@ with st.sidebar:
 
         kva_range = st.slider("KVA Range", mn, mx, (mn, mx), key="f_kva")
 
-        today = datetime.today().date()
-        first = today.replace(day=1)
-        date_vals = st.date_input("Enquiry Date Range", (first, today), key="f_date")
+        # Today’s date
+        today = date.today()
+
+# Compute the start of the Indian financial year
+        if today.month >= 4:
+            fy_start = date(today.year, 4, 1)
+        else:
+            fy_start = date(today.year - 1, 4, 1)
+
+# Default the date picker from FY start to today
+        date_vals = st.date_input(
+            "Enquiry Date Range",
+            (fy_start, today),
+            key="f_date"
+        )
         if isinstance(date_vals, (list, tuple)) and len(date_vals)==2:
             start_date, end_date = date_vals
         else:
-            start_date, end_date = first, today
+            start_date, end_date = fy_start, today
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Apply filters + Employee scoping
