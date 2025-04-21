@@ -812,52 +812,127 @@ with tabs[6]:
         st.markdown("---")
     st.subheader("Follow‑Up Segmentation")
 
-    # 1) Bucket leads by number of follow‑ups: 0, 1–2, 3+
-    def fu_bucket(n):
-        if n == 0:
-            return "0"
-        elif 1 <= n <= 2:
-            return "1–2"
-        else:
-            return "3+"
+    st.markdown("---")
+    st.subheader("Follow‑Up Segmentation")
 
-    temp = filtered_df.copy()
-    temp["Follow‑Up Bucket"] = temp["No of Follow‑ups"].apply(fu_bucket)
+    # 1) Identify your follow‑up column dynamically
+    fu_cols = [c for c in filtered_df.columns if "follow" in c.lower() and "no" in c.lower()]
+    if not fu_cols:
+        st.error("Could not find a 'follow‑up' column in the data.")
+    else:
+        fu_col = fu_cols[0]
 
-    # 2) Compute stats per bucket
-    stats_fu = (
-        temp.groupby("Follow‑Up Bucket")["Enquiry No"]
-        .agg(Total_Leads="count")
-        .reset_index()
-    )
-    stats_fu["Converted_Leads"] = (
-        temp[temp["Enquiry Stage"].isin(won_stages + ["Order Booked"])]
-        .groupby("Follow‑Up Bucket")["Enquiry No"]
-        .count()
-        .reindex(stats_fu["Follow‑Up Bucket"], fill_value=0)
-        .values
-    )
-    stats_fu["Conversion %"] = (
-        stats_fu["Converted_Leads"] / stats_fu["Total_Leads"] * 100
-    ).round(1)
+        # 2) Bucket function
+        def fu_bucket(n):
+            try:
+                n = int(n)
+            except:
+                n = 0
+            if n == 0:
+                return "0"
+            elif 1 <= n <= 2:
+                return "1–2"
+            else:
+                return "3+"
 
-    # 3) Bar chart of conversion %
-    fig_fu = px.bar(
-        stats_fu,
-        x="Follow‑Up Bucket",
-        y="Conversion %",
-        labels={"Conversion %":"Conv. %","Follow‑Up Bucket":"Bucket"},
-        title="Conversion Rate by Follow‑Up Bucket",
-        text="Conversion %"
-    )
-    fig_fu.update_traces(textposition="outside")
-    st.plotly_chart(fig_fu, use_container_width=True)
+        # 3) Prepare a temp DataFrame
+        temp = filtered_df.copy()
+        temp[fu_col] = temp[fu_col].fillna(0)
+        temp["Follow‑Up Bucket"] = temp[fu_col].apply(fu_bucket)
 
-    # 4) Show table of stats
-    st.dataframe(stats_fu, use_container_width=True)
+        # 4) Compute stats per bucket
+        stats_fu = (
+            temp.groupby("Follow‑Up Bucket")["Enquiry No"]
+            .agg(Total_Leads="count")
+            .reset_index()
+        )
+        # Count converted leads (Closed‑Won + Order Booked)
+        stats_fu["Converted_Leads"] = (
+            temp[temp["Enquiry Stage"].isin(won_stages + ["Order Booked"])]
+            .groupby("Follow‑Up Bucket")["Enquiry No"]
+            .count()
+            .reindex(stats_fu["Follow‑Up Bucket"], fill_value=0)
+            .values
+        )
+        stats_fu["Conversion %"] = (
+            stats_fu["Converted_Leads"] / stats_fu["Total_Leads"] * 100
+        ).round(1)
 
+        # 5) Bar chart of conversion %
+        fig_fu = px.bar(
+            stats_fu,
+            x="Follow‑Up Bucket",
+            y="Conversion %",
+            labels={"Conversion %":"Conv. %","Follow‑Up Bucket":"Bucket"},
+            title="Conversion Rate by Follow‑Up Bucket",
+            text="Conversion %"
+        )
+        fig_fu.update_traces(textposition="outside")
+        st.plotly_chart(fig_fu, use_container_width=True)
 
+        # 6) Show table of stats
+        st.dataframe(stats_fu, use_container_width=True)
 
+    st.markdown("---")
+    st.subheader("Follow‑Up Segmentation")
+
+    # 1) Identify your follow‑up column dynamically
+    fu_cols = [c for c in filtered_df.columns if "follow" in c.lower() and "no" in c.lower()]
+    if not fu_cols:
+        st.error("Could not find a 'follow‑up' column in the data.")
+    else:
+        fu_col = fu_cols[0]
+
+        # 2) Bucket function
+        def fu_bucket(n):
+            try:
+                n = int(n)
+            except:
+                n = 0
+            if n == 0:
+                return "0"
+            elif 1 <= n <= 2:
+                return "1–2"
+            else:
+                return "3+"
+
+        # 3) Prepare a temp DataFrame
+        temp = filtered_df.copy()
+        temp[fu_col] = temp[fu_col].fillna(0)
+        temp["Follow‑Up Bucket"] = temp[fu_col].apply(fu_bucket)
+
+        # 4) Compute stats per bucket
+        stats_fu = (
+            temp.groupby("Follow‑Up Bucket")["Enquiry No"]
+            .agg(Total_Leads="count")
+            .reset_index()
+        )
+        # Count converted leads (Closed‑Won + Order Booked)
+        stats_fu["Converted_Leads"] = (
+            temp[temp["Enquiry Stage"].isin(won_stages + ["Order Booked"])]
+            .groupby("Follow‑Up Bucket")["Enquiry No"]
+            .count()
+            .reindex(stats_fu["Follow‑Up Bucket"], fill_value=0)
+            .values
+        )
+        stats_fu["Conversion %"] = (
+            stats_fu["Converted_Leads"] / stats_fu["Total_Leads"] * 100
+        ).round(1)
+
+        # 5) Bar chart of conversion %
+        fig_fu = px.bar(
+            stats_fu,
+            x="Follow‑Up Bucket",
+            y="Conversion %",
+            labels={"Conversion %":"Conv. %","Follow‑Up Bucket":"Bucket"},
+            title="Conversion Rate by Follow‑Up Bucket",
+            text="Conversion %"
+        )
+        fig_fu.update_traces(textposition="outside")
+        st.plotly_chart(fig_fu, use_container_width=True)
+
+        # 6) Show table of stats
+        st.dataframe(stats_fu, use_container_width=True)
 
 # --- Admin Panel ---
 if role=="Admin":
