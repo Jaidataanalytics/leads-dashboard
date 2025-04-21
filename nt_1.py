@@ -809,6 +809,52 @@ with tabs[6]:
         st.dataframe(reg_stats, use_container_width=True)
     else:
         st.info(f"Not enough {region_level.lower()}s (need ≥{region_clusters} with ≥5 leads).")
+        st.markdown("---")
+    st.subheader("Follow‑Up Segmentation")
+
+    # 1) Bucket leads by number of follow‑ups: 0, 1–2, 3+
+    def fu_bucket(n):
+        if n == 0:
+            return "0"
+        elif 1 <= n <= 2:
+            return "1–2"
+        else:
+            return "3+"
+
+    temp = filtered_df.copy()
+    temp["Follow‑Up Bucket"] = temp["No of Follow‑ups"].apply(fu_bucket)
+
+    # 2) Compute stats per bucket
+    stats_fu = (
+        temp.groupby("Follow‑Up Bucket")["Enquiry No"]
+        .agg(Total_Leads="count")
+        .reset_index()
+    )
+    stats_fu["Converted_Leads"] = (
+        temp[temp["Enquiry Stage"].isin(won_stages + ["Order Booked"])]
+        .groupby("Follow‑Up Bucket")["Enquiry No"]
+        .count()
+        .reindex(stats_fu["Follow‑Up Bucket"], fill_value=0)
+        .values
+    )
+    stats_fu["Conversion %"] = (
+        stats_fu["Converted_Leads"] / stats_fu["Total_Leads"] * 100
+    ).round(1)
+
+    # 3) Bar chart of conversion %
+    fig_fu = px.bar(
+        stats_fu,
+        x="Follow‑Up Bucket",
+        y="Conversion %",
+        labels={"Conversion %":"Conv. %","Follow‑Up Bucket":"Bucket"},
+        title="Conversion Rate by Follow‑Up Bucket",
+        text="Conversion %"
+    )
+    fig_fu.update_traces(textposition="outside")
+    st.plotly_chart(fig_fu, use_container_width=True)
+
+    # 4) Show table of stats
+    st.dataframe(stats_fu, use_container_width=True)
 
 
 
