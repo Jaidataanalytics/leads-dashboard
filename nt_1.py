@@ -982,24 +982,30 @@ with tab["Alerts"]:
     # load audit logs
     audits = pd.read_csv("audit_logs.csv", parse_dates=["Timestamp"], keep_default_na=False)
     audits["Timestamp"] = pd.to_datetime(audits["Timestamp"], errors="coerce")
-    missed = []
+    # b) Missed (past due and no update on the due date)
+    missed_rows = []
     for _, r in filtered_df.iterrows():
         pd_date = r.get("Planned Followup Date")
         if pd.isna(pd_date) or pd_date.normalize() >= today:
             continue
-        # any audit on that enquiry on that due date?
         logs = audits[
             (audits["Enquiry No"] == r["Enquiry No"]) &
             (audits["Timestamp"].dt.normalize() == pd_date.normalize())
         ]
         if logs.empty:
-            missed.append(r)
-    if missed:
-        st.markdown("**Missed Follow-ups**")
-        for r in missed:
-            st.error(
-                f"Lead {r['Enquiry No']} – {r['Name']} missed follow-up on {r['Planned Followup Date'].date()}."
-            )
+            missed_rows.append({
+                "Enquiry No": r["Enquiry No"],
+                "Customer":   r["Name"],
+                "Employee":   r["Employee Name"],
+                "Due Date":   pd_date.date().isoformat(),
+                "Alert":      f"Lead {r['Enquiry No']} – {r['Name']} follow-up on {pd_date.date()} was **missed** by {r['Employee Name']}"
+            })
+
+    if missed_rows:
+        st.markdown("## Missed Follow-ups")
+        df_missed = pd.DataFrame(missed_rows)
+        # Show only the “Alert” column in a nice table
+        st.table(df_missed[["Alert"]])
     else:
         st.info("No missed follow-ups.")
 
