@@ -285,7 +285,7 @@ lost_stages = ["Closed-Dropped","Closed-Lost"]
 # Tabs setup
 # ──────────────────────────────────────────────────────────────────────────────
 tabs = ["KPI","Charts","Top Dealers","Top Employees",
-        "Upload New Lead","Lead Update","Insights"]
+        "Upload New Lead","Lead Update","Insights","Alerts"]
 if role=="Admin": tabs.append("Admin")
 tabs = st.tabs(tabs)
 
@@ -957,3 +957,91 @@ if role=="Admin":
         ul = pd.read_csv("user_logs.csv")
         st.download_button("Download User Log", ul.to_csv(index=False).encode(), "user_logs.csv")
         st.dataframe(ul, use_container_width=True)
+
+with tabs["Alerts"]:
+    st.subheader("🚨 Alerts")
+
+    # 1) FOLLOW-UP ALERTS
+    today = pd.Timestamp.today().normalize()
+
+    # a) Upcoming / due today
+    due_today = filtered_df[
+        filtered_df["Planned Followup Date"].dt.normalize() == today
+    ]
+    if not due_today.empty:
+        st.markdown("**Follow-ups Due Today**")
+        for _, r in due_today.iterrows():
+            st.warning(
+                f"Lead {r['Enquiry No']} – {r['Name']} scheduled for follow-up today."
+            )
+    else:
+        st.info("No follow-ups due today.")
+
+    # b) Missed (past due and no update on the due date)
+    # load audit logs
+    audits = pd.read_csv("audit_logs.csv", parse_dates=["Timestamp"], keep_default_na=False)
+    missed = []
+    for _, r in filtered_df.iterrows():
+        pd_date = r.get("Planned Followup Date")
+        if pd.isna(pd_date) or pd_date.normalize() >= today:
+            continue
+        # any audit on that enquiry on that due date?
+        logs = audits[
+            (audits["Enquiry No"] == r["Enquiry No"]) &
+            (audits["Timestamp"].dt.normalize() == pd_date.normalize())
+        ]
+        if logs.empty:
+            missed.append(r)
+    if missed:
+        st.markdown("**Missed Follow-ups**")
+        for r in missed:
+            st.error(
+                f"Lead {r['Enquiry No']} – {r['Name']} missed follow-up on {r['Planned Followup Date'].date()}."
+            )
+    else:
+        st.info("No missed follow-ups.")
+
+    # c) Completed on due date
+    completed = []
+    for _, r in filtered_df.iterrows():
+        pd_date = r.get("Planned Followup Date")
+        if pd.isna(pd_date) or pd_date.normalize() > today:
+            continue
+        logs = audits[
+            (audits["Enquiry No"] == r["Enquiry No"]) &
+            (audits["Timestamp"].dt.normalize() == pd_date.normalize())
+        ]
+        if not logs.empty:
+            completed.append((r, logs.iloc[0]))
+    if completed:
+        st.markdown("**Follow-ups Completed on Schedule**")
+        for r, log in completed:
+            st.success(
+                f"Lead {r['Enquiry No']} – {r['Name']} was followed up on {r['Planned Followup Date'].date()}."
+            )
+
+    st.markdown("---")
+
+    # 2) NEW-LEAD ALERTS
+    # read login history
+    users_log = pd.read_csv("user_logs.csv", parse_dates=["Timestamp"], keep_default_na=False)
+    # find the two most recent logins for current_user
+    ul = users_log[users_log["User"] == current_user]
+    if len(ul) >= 2:
+        last_two = ul.sort_values("Timestamp", ascending=False).head(2)
+        last_login = last_two.iloc[1]["Timestamp"]
+    else:
+        last_login = pd.Timestamp.min
+
+    new_leads = audits[
+        (audits["Action"] == "New Lead Uploaded") &
+        (audits["Timestamp"] > last_login)
+    ]
+    if not new_leads.empty:
+        st.markdown("**New Leads Since Your Last Login**")
+        for _, r in new_leads.iterrows():
+            st.info(
+                f"Lead {r['Enquiry No']} uploaded at {r['Timestamp'].strftime('%Y-%m-%d %H:%M')}."
+            )
+    else:
+        st.info("No new leads since your last login.")
