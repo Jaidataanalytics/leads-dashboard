@@ -377,56 +377,104 @@ with tab["KPI"]:
             </div>
         """, unsafe_allow_html=True)
 
-    st.markdown("---")
+        st.markdown("---")
 
-    # Drill‑down filter
-    choice = st.radio("Details for:", ["All", "Open", "Lost", "Won"], horizontal=True, key="kpi_drill")
-    if choice == "All":
-        ddf = filtered_df
-    elif choice == "Open":
-        ddf = filtered_df[filtered_df["Enquiry Stage"].isin(open_stages)]
-    elif choice == "Lost":
-        ddf = filtered_df[filtered_df["Enquiry Stage"].isin(lost_stages)]
-    else:
-        ddf = filtered_df[filtered_df["Enquiry Stage"].isin(won_stages)]
+        # Drill‑down filter
+        choice = st.radio("Details for:", ["All", "Open", "Lost", "Won"], horizontal=True, key="kpi_drill")
+        if choice == "All":
+            ddf = filtered_df
+        elif choice == "Open":
+            ddf = filtered_df[filtered_df["Enquiry Stage"].isin(open_stages)]
+        elif choice == "Lost":
+            ddf = filtered_df[filtered_df["Enquiry Stage"].isin(lost_stages)]
+        else:
+            ddf = filtered_df[filtered_df["Enquiry Stage"].isin(won_stages)]
 
-    # Lead selector & snapshot
+    # ─── Lead selector & Snapshot ──────────────────────────────────────────
     st.markdown("### Lead Details (search & select below)")
-    opts = (ddf["Enquiry No"].astype(str) + " – " + ddf["Name"]).tolist()
-    chosen = st.multiselect("Search & select a lead", opts, default=[], max_selections=1, key="kpi_lead_select")
-    if chosen:
-        enq_no, _ = chosen[0].split(" – ", 1)
-        row = leads_df[leads_df["Enquiry No"].astype(str) == enq_no].iloc[0]
-        with st.expander(f"📋 Lead #{enq_no} Snapshot", expanded=True):
-            age = row.get("Lead Age (Days)", None)
-            st.write(f"**Lead Age (Days):** {int(age) if pd.notna(age) else 'N/A'}")
-            for c in ["Enquiry No","Name","Dealer","Employee Name","Enquiry Stage","Phone Number","Email"]:
-                st.write(f"**{c}:** {row.get(c,'')}")
-            for i in range(1,6):
-                st.write(f"**Question{i}:** {row.get(f'Question{i}','')}")
-            pf = pd.to_datetime(row.get("Planned Followup Date"), errors="coerce")
-            st.write(f"**Planned Follow‑up Date:** {pf.date().isoformat() if pd.notna(pf) else 'N/A'}")
-            st.write(f"**No of Follow‑ups:** {row.get('No of Follow‑ups',0)}")
-            st.write(f"**Next Action:** {row.get('Next Action','')}")
 
-    # Summary table
-    if not ddf.empty:
-        pref = ["Name","Dealer","Employee Name","Segment",("Location" if "Location" in ddf.columns else "Area Office")]
-        ordered_cols = [c for c in pref if c in ddf.columns] + [c for c in ddf.columns if c not in pref]
-        ordered = ddf[ordered_cols]
-        gb = GridOptionsBuilder.from_dataframe(ordered)
-        gb.configure_pagination(paginationAutoPageSize=True)
-        gb.configure_default_column(enableValue=True, sortable=True, filter=True)
-        AgGrid(ordered, gridOptions=gb.build(), enable_enterprise_modules=False)
-    else:
-        st.info("No leads to display.")
-    csv = ddf.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        label="📥 Download Summary Table",
-        data=csv,
-        file_name="lead_summary.csv",
-        mime="text/csv",
+    # Build the options list in the format "EnquiryNo – Name"
+    opts = [
+        f"{eno} – {nm}"
+        for eno, nm in zip(
+            ddf["Enquiry No"].astype(str),
+            ddf["Name"]
+        )
+    ]
+
+    # Multiselect (max 1) to choose a single lead
+    chosen = st.multiselect(
+        "Search & select a lead",
+        options=opts,
+        default=[],
+        max_selections=1,
+        key="kpi_lead_select"
     )
+
+    # Only show the snapshot once the user has selected something
+    if chosen:
+        # Extract the enquiry number from the selected string
+        enq_no = chosen[0].split(" – ")[0]
+
+        # Pull the full row from the master leads_df
+        row = leads_df[
+            leads_df["Enquiry No"].astype(str) == enq_no
+        ].iloc[0]
+
+        with st.expander(f"📋 Lead #{enq_no} Snapshot", expanded=True):
+            st.markdown("**Lead Snapshot**")
+
+            # 1) Lead Age
+            age = row.get("Lead Age (Days)", None)
+            display_age = int(age) if (age is not None and pd.notna(age)) else "N/A"
+            st.write(f"**Lead Age (Days):** {display_age}")
+
+            # 2) Core fields
+            for field in [
+                "Enquiry No", "Name", "Dealer", "Employee Name",
+                "Enquiry Stage", "Phone Number", "Email"
+            ]:
+                val = row.get(field, "")
+                st.write(f"**{field}:** {val or 'N/A'}")
+
+            # 3) Questionnaire answers Q1–Q5
+            for i in range(1, 6):
+                q_col = f"Question{i}"
+                ans   = row.get(q_col, "")
+                st.write(f"**{q_col}:** {ans or 'N/A'}")
+
+            # 4) Planned Follow-up Date
+            pf_dt = pd.to_datetime(row.get("Planned Followup Date"), errors="coerce")
+            pf_str = pf_dt.date().isoformat() if pd.notna(pf_dt) else "N/A"
+            st.write(f"**Planned Follow-up Date:** {pf_str}")
+
+            # 5) No of Follow-ups
+            fu = row.get("No of Follow-ups", 0)
+            st.write(f"**No of Follow-ups:** {fu}")
+
+            # 6) Next Action
+            na = row.get("Next Action", "")
+            st.write(f"**Next Action:** {na or 'N/A'}")
+
+
+            # Summary table
+            if not ddf.empty:
+                pref = ["Name","Dealer","Employee Name","Segment",("Location" if "Location" in ddf.columns else "Area Office")]
+                ordered_cols = [c for c in pref if c in ddf.columns] + [c for c in ddf.columns if c not in pref]
+                ordered = ddf[ordered_cols]
+                gb = GridOptionsBuilder.from_dataframe(ordered)
+                gb.configure_pagination(paginationAutoPageSize=True)
+                gb.configure_default_column(enableValue=True, sortable=True, filter=True)
+                AgGrid(ordered, gridOptions=gb.build(), enable_enterprise_modules=False)
+            else:
+                st.info("No leads to display.")
+            csv = ddf.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label="📥 Download Summary Table",
+                data=csv,
+                file_name="lead_summary.csv",
+                mime="text/csv",
+            )
 
 # --- Charts Tab ---
 ### ── REPLACE YOUR ENTIRE CHARTS TAB WITH THIS BLOCK ────────────────────────
