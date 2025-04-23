@@ -298,7 +298,8 @@ tab    = {label: pane for label, pane in zip(tab_labels, panels)}
 with tab["KPI"]:
     st.subheader("Key Performance Indicators")
 
-    # 1) Apply all filters except date
+    # ─────────────────────────────────────────────────────────────────────────
+    # 1) Build an un‐date‐filtered DF for the growth comps
     non_date_df = leads_df.copy()
     for col, vals in selected.items():
         non_date_df = non_date_df[non_date_df[col].isin(vals)]
@@ -307,171 +308,148 @@ with tab["KPI"]:
         (non_date_df["KVA"] <= kva_range[1])
     ]
 
-    # 2) Time boundaries
+    # ─────────────────────────────────────────────────────────────────────────
+    # 2) Time windows
     today = datetime.today()
-    w_start, w_prev = today - timedelta(days=7), today - timedelta(days=14)
-    m_start, m_prev = today - timedelta(days=30), today - timedelta(days=60)
+    w_start,  w_prev = today - timedelta(days=7),  today - timedelta(days=14)
+    m_start,  m_prev = today - timedelta(days=30), today - timedelta(days=60)
 
-    # 3) Count helper
+    # ─────────────────────────────────────────────────────────────────────────
+    # 3) Helpers
     def count_in_period(df, start, end, stages=None):
         sub = df[(df["Enquiry Date"] >= start) & (df["Enquiry Date"] < end)]
         return sub["Enquiry Stage"].isin(stages).sum() if stages else len(sub)
 
-    # 4) Growth helper
     def growth(curr, prev):
         return None if prev == 0 else (curr - prev) / prev * 100
 
-    # Compute week & month for each metric
     def comps(stages=None):
-        curr_w = count_in_period(non_date_df, w_start, today, stages)
-        prev_w = count_in_period(non_date_df, w_prev, w_start, stages)
-        curr_m = count_in_period(non_date_df, m_start, today, stages)
-        prev_m = count_in_period(non_date_df, m_prev, m_start, stages)
-        return growth(curr_w, prev_w), growth(curr_m, prev_m)
+        c_w = count_in_period(non_date_df, w_start, today, stages)
+        p_w = count_in_period(non_date_df, w_prev, w_start, stages)
+        c_m = count_in_period(non_date_df, m_start, today, stages)
+        p_m = count_in_period(non_date_df, m_prev, m_start, stages)
+        return growth(c_w, p_w), growth(c_m, p_m)
 
     g_w_total, g_m_total = comps()
     g_w_open,  g_m_open  = comps(open_stages)
     g_w_won,   g_m_won   = comps(won_stages)
     g_w_lost,  g_m_lost  = comps(lost_stages)
 
-    # 5) Current filtered metrics
+    # ─────────────────────────────────────────────────────────────────────────
+    # 4) Current filtered metrics
     total    = len(filtered_df)
     open_ct  = filtered_df["Enquiry Stage"].isin(open_stages).sum()
     won_ct   = filtered_df["Enquiry Stage"].isin(won_stages).sum()
     lost_ct  = filtered_df["Enquiry Stage"].isin(lost_stages).sum()
-    if filtered_df.empty or filtered_df["Lead Age (Days)"].isna().all():
-        avg_age = 0
-    else:
-        avg_age = int(filtered_df["Lead Age (Days)"].mean())
+    avg_age  = int(filtered_df["Lead Age (Days)"].mean()) if total and filtered_df["Lead Age (Days)"].notna().any() else 0
 
-    # 6) Format percentages
     def fmt_pct(val):
         if val is None:
             return "—"
         arrow = "▲" if val >= 0 else "▼"
         return f"{arrow}{val:+.1f}%"
 
-    # 7) Render cards
-    cols = st.columns(5)
+    # ─────────────────────────────────────────────────────────────────────────
+    # 5) Render the 5 KPI cards
+    cols  = st.columns(5)
     specs = [
-        ("📈 Total Leads",    total,         "#2C3E50", g_w_total, g_m_total),
-        ("🕒 Open Leads",     open_ct,       "#34495E", g_w_open,  g_m_open),
-        ("🏆 Won Leads",      won_ct,        "#006400", g_w_won,   g_m_won),
-        ("❌ Lost Leads",     lost_ct,       "#8B0000", g_w_lost,  g_m_lost),
-        ("📊 Avg Lead Age",   f"{avg_age} days", "#555555", None, None),
+        ("📈 Total Leads",    total,       "#2C3E50", g_w_total, g_m_total),
+        ("🕒 Open Leads",     open_ct,     "#34495E", g_w_open,  g_m_open),
+        ("🏆 Won Leads",      won_ct,      "#006400", g_w_won,   g_m_won),
+        ("❌ Lost Leads",     lost_ct,     "#8B0000", g_w_lost,  g_m_lost),
+        ("📊 Avg Lead Age",   f"{avg_age}d","#555555", None,     None),
     ]
     for col, (title, val, bg, gw, gm) in zip(cols, specs):
         growth_html = ""
         if gw is not None:
             growth_html = f"""
-              <div style='font-size:12px;color:#DDD'>
-                <span style='margin-right:8px'>W: {fmt_pct(gw)}</span>
-                <span>M: {fmt_pct(gm)}</span>
-              </div>
+                <div style='font-size:12px;color:#DDD'>
+                  <span style='margin-right:8px'>W: {fmt_pct(gw)}</span>
+                  <span>M: {fmt_pct(gm)}</span>
+                </div>
             """
         col.markdown(f"""
-            <div style='background:{bg};padding:16px;border-radius:8px;color:#FFF;text-align:center'>
+            <div style='background:{bg};padding:16px;
+                        border-radius:8px;color:#FFF;text-align:center'>
               <div style='font-size:16px'>{title}</div>
               <div style='font-size:28px;font-weight:bold;margin:4px'>{val}</div>
               {growth_html}
             </div>
         """, unsafe_allow_html=True)
 
-        st.markdown("---")
-
-        # Drill‑down filter
-        choice = st.radio("Details for:", ["All", "Open", "Lost", "Won"], horizontal=True, key="kpi_drill")
-        if choice == "All":
-            ddf = filtered_df
-        elif choice == "Open":
-            ddf = filtered_df[filtered_df["Enquiry Stage"].isin(open_stages)]
-        elif choice == "Lost":
-            ddf = filtered_df[filtered_df["Enquiry Stage"].isin(lost_stages)]
-        else:
-            ddf = filtered_df[filtered_df["Enquiry Stage"].isin(won_stages)]
-
-    # ─── Lead selector & Snapshot ──────────────────────────────────────────
-    st.markdown("### Lead Details (search & select below)")
-
-    # Build the options list in the format "EnquiryNo – Name"
-    opts = [
-        f"{eno} – {nm}"
-        for eno, nm in zip(
-            ddf["Enquiry No"].astype(str),
-            ddf["Name"]
-        )
-    ]
-
-    # Multiselect (max 1) to choose a single lead
-    chosen = st.multiselect(
-        "Search & select a lead",
-        options=opts,
-        default=[],
-        max_selections=1,
-        key="kpi_lead_select_main"
+    # ─────────────────────────────────────────────────────────────────────────
+    # 6) Drill-down radio (now only once)
+    st.markdown("---")
+    choice = st.radio(
+        "Details for:", ["All", "Open", "Lost", "Won"],
+        horizontal=True, key="kpi_drill"
     )
+    if choice == "All":
+        ddf = filtered_df
+    elif choice == "Open":
+        ddf = filtered_df[filtered_df["Enquiry Stage"].isin(open_stages)]
+    elif choice == "Lost":
+        ddf = filtered_df[filtered_df["Enquiry Stage"].isin(lost_stages)]
+    else:
+        ddf = filtered_df[filtered_df["Enquiry Stage"].isin(won_stages)]
 
-    # Only show the snapshot once the user has selected something
-    if chosen:
-        # Extract the enquiry number from the selected string
-        enq_no = chosen[0].split(" – ")[0]
+    # ─────────────────────────────────────────────────────────────────────────
+    # 7) Lead selector & snapshot
+    st.markdown("### Lead Details (search & select below)")
+    opts = (ddf["Enquiry No"].astype(str) + " – " + ddf["Name"]).tolist()
+    sel  = st.selectbox("Search & select a lead", [""] + opts, key="kpi_lead_select")
+    if sel:
+        enq_no = sel.split(" – ", 1)[0]
+        row    = leads_df[leads_df["Enquiry No"].astype(str) == enq_no].iloc[0]
 
-        # Pull the full row from the master leads_df
-           # new – pull from the FILTERED dataframe that has up-to-date "Lead Age (Days)"
-        row = ddf[
-            ddf["Enquiry No"].astype(str) == enq_no
-        ].iloc[0]
+        with st.expander(f"📋 Lead #{enq_no} Snapshot", expanded=True):
+            # Lead Age
+            age = row.get("Lead Age (Days)", None)
+            display_age = int(age) if pd.notna(age) else "N/A"
+            st.write(f"**Lead Age (Days):** {display_age}")
 
+            # Core fields
+            for field in [
+                "Enquiry No","Name","Dealer","Employee Name",
+                "Enquiry Stage","Phone Number","Email"
+            ]:
+                val = row.get(field, "")
+                st.write(f"**{field}:** {val or 'N/A'}")
 
-        st.markdown("### Lead Details (search & select below)")
-        opts = [ f"{e} – {n}" for e,n in zip(ddf["Enquiry No"].astype(str), ddf["Name"]) ]
-        chosen = st.multiselect(
-            "Search & select a lead",
-            options=opts,
-            default=[],
-            max_selections=1,
-            key="kpi_lead_select_"
-        )
+            # Questionnaire
+            for i in range(1, 6):
+                ans = row.get(f"Question{i}", "")
+                st.write(f"**Question{i}:** {ans or 'N/A'}")
 
-        if chosen:
-            enq_no = chosen[0].split(" – ")[0]
+            # Follow-up info
+            pf = pd.to_datetime(row.get("Planned Followup Date"), errors="coerce")
+            pf_str = pf.date().isoformat() if pd.notna(pf) else "N/A"
+            st.write(f"**Planned Follow-up Date:** {pf_str}")
+            st.write(f"**No of Follow-ups:** {row.get('No of Follow-ups',0)}")
+            st.write(f"**Next Action:** {row.get('Next Action','N/A')}")
 
-            # ← FIXED: use ddf here, not leads_df
-            row = ddf[
-                ddf["Enquiry No"].astype(str) == enq_no
-            ].iloc[0]
+        # ─────────────────────────────────────────────────────────────────
+        # 8) Summary table & download
+        if not ddf.empty:
+            pref = ["Name","Dealer","Employee Name","Segment","Location"]
+            ordered_cols = [c for c in pref if c in ddf.columns] + \
+                           [c for c in ddf.columns if c not in pref]
+            ordered = ddf[ordered_cols]
+            gb = GridOptionsBuilder.from_dataframe(ordered)
+            gb.configure_pagination(paginationAutoPageSize=True)
+            gb.configure_default_column(enableValue=True, sortable=True, filter=True)
+            AgGrid(ordered, gridOptions=gb.build(), enable_enterprise_modules=False)
 
-            with st.expander(f"📋 Lead #{enq_no} Snapshot", expanded=True):
-                st.markdown("**Lead Snapshot**")
+            csv = ordered.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                "📥 Download Summary Table",
+                data=csv,
+                file_name="lead_summary.csv",
+                mime="text/csv",
+            )
+        else:
+            st.info("No leads to display.")
 
-                # Lead Age (Days)
-                age = row["Lead Age (Days)"]
-                display_age = int(age) if pd.notna(age) else "N/A"
-                st.write(f"**Lead Age (Days):** {display_age}")
-
-                # Core fields
-                for fld in ["Enquiry No","Name","Dealer","Employee Name",
-                            "Enquiry Stage","Phone Number","Email"]:
-                    val = row.get(fld, "")
-                    st.write(f"**{fld}:** {val or 'N/A'}")
-
-                # Q1–Q5
-                for i in range(1,6):
-                    ans = row.get(f"Question{i}", "")
-                    st.write(f"**Question{i}:** {ans or 'N/A'}")
-
-                # Planned Follow-up
-                pf = pd.to_datetime(row.get("Planned Followup Date"), errors="coerce")
-                pf_str = pf.date().isoformat() if pd.notna(pf) else "N/A"
-                st.write(f"**Planned Follow-up Date:** {pf_str}")
-
-                # No of Follow-ups
-                fu = row.get("No of Follow-ups", 0)
-                st.write(f"**No of Follow-ups:** {fu}")
-
-                # Next Action
-                na = row.get("Next Action", "")
-                st.write(f"**Next Action:** {na or 'N/A'}")
 
 # --- Charts Tab ---
 ### ── REPLACE YOUR ENTIRE CHARTS TAB WITH THIS BLOCK ────────────────────────
