@@ -200,15 +200,25 @@ with st.sidebar:
             "Segment":     sorted(leads_df["Segment"].unique())  if seg_sel=="All"    else [seg_sel],
         }
 
-        # 6) KVA & Date range (unchanged)
-        # Determine min/max KVA safely
-        raw_min = leads_df["KVA"].min()
-        raw_max = leads_df["KVA"].max()
+# ─── KVA slider ────────────────────────────────────────────────────────────
+        valid_kva = leads_df["KVA"].dropna()
+        if not valid_kva.empty:
+            mn = int(valid_kva.min())
+            mx = int(valid_kva.max())
+        else:
+            mn, mx = 0, 1
 
-        mn = int(raw_min) if pd.notna(raw_min) else 0
-        mx = int(raw_max) if pd.notna(raw_max) else mn + 1
+        if mn >= mx:
+            mx = mn + 1
 
-        kva_range = st.slider("KVA Range", mn, mx, (mn, mx), key="f_kva")
+        kva_range = st.slider(
+            "KVA Range",
+            min_value=mn,
+            max_value=mx,
+            value=(mn, mx),
+            key="f_kva"
+        )
+
 
         # Today’s date
         today = date.today()
