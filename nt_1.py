@@ -1002,22 +1002,22 @@ with tab["Alerts"]:
             })
 
     if missed_rows:
-        # Order by due date descending (most recent at top)
+        # sort newest due first
         df_missed = (
             pd.DataFrame(missed_rows)
               .sort_values("Date", ascending=False)
               .reset_index(drop=True)
         )
 
-        # Show only the first 5, with a "Show all" expander
-        with st.expander(f"❗ Missed Follow-ups ({len(df_missed)} total) – show recent 5", expanded=False):
+        with st.expander(f"❗ Missed Follow-ups ({len(df_missed)} total)", expanded=False):
+            # show only the first 5
             st.table(df_missed[["Alert"]].head(5))
-            # nested expander for the full list
-            with st.expander("Show all missed follow-ups"):
+
+            # checkbox to reveal full list
+            if st.checkbox("Show all missed follow-ups", key="show_all_missed"):
                 st.table(df_missed[["Alert"]])
     else:
         st.info("No missed follow-ups.")
-
     # c) Completed on due date
     completed = []
     for _, r in filtered_df.iterrows():
