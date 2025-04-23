@@ -284,16 +284,15 @@ lost_stages = ["Closed-Dropped","Closed-Lost"]
 # ──────────────────────────────────────────────────────────────────────────────
 # Tabs setup
 # ──────────────────────────────────────────────────────────────────────────────
-tabs = ["KPI","Charts","Top Dealers","Top Employees",
+tab_labels = ["KPI","Charts","Top Dealers","Top Employees",
         "Upload New Lead","Lead Update","Insights","Alerts"]
-if role=="Admin": tabs.append("Admin")
-tabs = st.tabs(tabs)
-panels = st.tabs(tabs)                              # panels is a list
-tab    = {label: pane for label, pane in zip(tabs, panels)}
+if role=="Admin": tab_labels.append("Admin")
+panels = st.tabs(tab_labels)                              # panels is a list
+tab    = {label: pane for label, pane in zip(tab_labels, panels)}
 
 # ──────────────────────────────────────────────────────────────────────────────
 # --- KPI Tab (complete updated code including lead selector & summary table) ---
-with tabs[0]:
+with tab[0]:
     st.subheader("Key Performance Indicators")
 
     # 1) Apply all filters except date
@@ -420,7 +419,7 @@ with tabs[0]:
 
 # --- Charts Tab ---
 ### ── REPLACE YOUR ENTIRE CHARTS TAB WITH THIS BLOCK ────────────────────────
-with tabs[1]:
+with tab[1]:
     st.subheader("Leads Visualisations")
 
     # 1️⃣  Pipeline Funnel (unchanged)
@@ -559,14 +558,14 @@ def top5(df, by):
     agg["Conv %"] = (agg["Won_Leads"]/agg["Total_Leads"]*100).round(1)
     return agg.sort_values("Won_Leads", ascending=False).head(5).reset_index()
 
-with tabs[2]:
+with tab[2]:
     st.subheader("Top 5 Dealers")
     st.table(top5(filtered_df, "Dealer"))
-with tabs[3]:
+with tab[3]:
     st.subheader("Top 5 Employees")
     st.table(top5(filtered_df, "Employee Name"))
 # --- Upload New Lead ---
-with tabs[4]:
+with tab[4]:
     st.subheader("Upload New Lead")
     uf = st.file_uploader("Upload leads Excel (xlsx)", type="xlsx", key="upload_new")
     if uf:
@@ -614,7 +613,7 @@ with tabs[4]:
                 st.rerun()
 
 # --- Lead Update ---
-with tabs[5]:
+with tab[5]:
     st.subheader("Lead Update")
     open_df = filtered_df[filtered_df["Enquiry Stage"].isin(open_stages)]
     if open_df.empty:
@@ -675,7 +674,7 @@ with tabs[5]:
 # ──────────────────────────────────────────────────────────────────────────────
 # Insights Tab — Dealer Segmentation with Dynamic Cluster Count
 # ──────────────────────────────────────────────────────────────────────────────
-with tabs[6]:
+with tab[6]:
     st.subheader("Dealer Segmentation (K‑Means)")
 
     # 1) Let the user pick how many clusters (2–6)
@@ -889,7 +888,7 @@ with tabs[6]:
 
 # --- Admin Panel ---
 if role=="Admin":
-    with tabs[-1]:
+    with tab[-1]:
         st.subheader("Admin Panel")
         # Historical upload...
         hf = st.file_uploader("Upload Historical Leads", type=["xlsx","csv"], key="hist")
