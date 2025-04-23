@@ -66,6 +66,9 @@ def load_data():
 
     # Coerce dates
     leads["Enquiry Date"] = pd.to_datetime(leads["Enquiry Date"], errors="coerce")
+        # ─── after parsing Enquiry Date ────────────────────────────────────
+    leads["Lead Age (Days)"] = (pd.Timestamp.today() - leads["Enquiry Date"]).dt.days
+
 
     # Drop unused columns
     drop_cols = ["Corporate Name","Tehsil","Pincode","PAN NO.",
@@ -395,7 +398,8 @@ with tab["KPI"]:
         enq_no, _ = chosen[0].split(" – ", 1)
         row = leads_df[leads_df["Enquiry No"].astype(str) == enq_no].iloc[0]
         with st.expander(f"📋 Lead #{enq_no} Snapshot", expanded=True):
-            st.write(f"**Lead Age (Days):** {row.get('Lead Age (Days)', 'N/A')}")
+            age = row.get("Lead Age (Days)", None)
+            st.write(f"**Lead Age (Days):** {int(age) if pd.notna(age) else 'N/A'}")
             for c in ["Enquiry No","Name","Dealer","Employee Name","Enquiry Stage","Phone Number","Email"]:
                 st.write(f"**{c}:** {row.get(c,'')}")
             for i in range(1,6):
