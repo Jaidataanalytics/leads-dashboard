@@ -292,7 +292,7 @@ tab    = {label: pane for label, pane in zip(tab_labels, panels)}
 
 # ──────────────────────────────────────────────────────────────────────────────
 # --- KPI Tab (complete updated code including lead selector & summary table) ---
-with tab[0]:
+with tab["KPI"]:
     st.subheader("Key Performance Indicators")
 
     # 1) Apply all filters except date
@@ -419,7 +419,7 @@ with tab[0]:
 
 # --- Charts Tab ---
 ### ── REPLACE YOUR ENTIRE CHARTS TAB WITH THIS BLOCK ────────────────────────
-with tab[1]:
+with tab["Charts"]:
     st.subheader("Leads Visualisations")
 
     # 1️⃣  Pipeline Funnel (unchanged)
@@ -558,14 +558,14 @@ def top5(df, by):
     agg["Conv %"] = (agg["Won_Leads"]/agg["Total_Leads"]*100).round(1)
     return agg.sort_values("Won_Leads", ascending=False).head(5).reset_index()
 
-with tab[2]:
+with tab["Top Dealers"]:
     st.subheader("Top 5 Dealers")
     st.table(top5(filtered_df, "Dealer"))
-with tab[3]:
+with tab["Top Employees"]:
     st.subheader("Top 5 Employees")
     st.table(top5(filtered_df, "Employee Name"))
 # --- Upload New Lead ---
-with tab[4]:
+with tab["Upload New Lead"]:
     st.subheader("Upload New Lead")
     uf = st.file_uploader("Upload leads Excel (xlsx)", type="xlsx", key="upload_new")
     if uf:
@@ -613,7 +613,7 @@ with tab[4]:
                 st.rerun()
 
 # --- Lead Update ---
-with tab[5]:
+with tab["Lead Update"]:
     st.subheader("Lead Update")
     open_df = filtered_df[filtered_df["Enquiry Stage"].isin(open_stages)]
     if open_df.empty:
@@ -674,7 +674,7 @@ with tab[5]:
 # ──────────────────────────────────────────────────────────────────────────────
 # Insights Tab — Dealer Segmentation with Dynamic Cluster Count
 # ──────────────────────────────────────────────────────────────────────────────
-with tab[6]:
+with tab["Insights"]:
     st.subheader("Dealer Segmentation (K‑Means)")
 
     # 1) Let the user pick how many clusters (2–6)
@@ -888,7 +888,7 @@ with tab[6]:
 
 # --- Admin Panel ---
 if role=="Admin":
-    with tab[-1]:
+    with tab["Admin"]:
         st.subheader("Admin Panel")
         # Historical upload...
         hf = st.file_uploader("Upload Historical Leads", type=["xlsx","csv"], key="hist")
