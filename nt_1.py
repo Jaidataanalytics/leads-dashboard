@@ -267,16 +267,16 @@ log_event(current_user, "Filter Applied",
 
 
 # Employee sees only leads whose Employee Name first token matches OR they uploaded
-if role == "Employee":
-    fn = current_user.split()[0].lower()
-    mask_name   = (
-        filtered_df["Employee Name"]
-          .str.split().str[0]
-          .str.lower()
-          .eq(fn)
-    )
-    mask_upload = filtered_df["Uploaded by"].str.lower().str.contains(fn, na=False)
-    filtered_df = filtered_df[mask_name | mask_upload]
+##if role == "Employee":
+##   fn = current_user.split()[0].lower()
+  ##  mask_name   = (
+    ##    filtered_df["Employee Name"]
+      ##    .str.split().str[0]
+        ##  .str.lower()
+         ## .eq(fn)
+    ##)
+   ## mask_upload = filtered_df["Uploaded by"].str.lower().str.contains(fn, na=False)
+   ## filtered_df = filtered_df[mask_name | mask_upload]
 
 open_stages = ["Prospecting","Qualified"]
 won_stages  = ["Closed-Won","Order Booked"]
