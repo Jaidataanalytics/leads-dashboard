@@ -994,18 +994,27 @@ with tab["Alerts"]:
         ]
         if logs.empty:
             missed_rows.append({
-                "Enquiry No": r["Enquiry No"],
-                "Customer":   r["Name"],
-                "Employee":   r["Employee Name"],
-                "Due Date":   pd_date.date().isoformat(),
-                "Alert":      f"Lead {r['Enquiry No']} – {r['Name']} follow-up on {pd_date.date()} was **missed** by {r['Employee Name']}"
+                "Alert": (
+                    f"Lead {r['Enquiry No']} – {r['Name']} "
+                    f"follow-up on {pd_date.date()} was missed by {r['Employee Name']}"
+                ),
+                "Date": pd_date
             })
 
     if missed_rows:
-        st.markdown("## Missed Follow-ups")
-        df_missed = pd.DataFrame(missed_rows)
-        # Show only the “Alert” column in a nice table
-        st.table(df_missed[["Alert"]])
+        # Order by due date descending (most recent at top)
+        df_missed = (
+            pd.DataFrame(missed_rows)
+              .sort_values("Date", ascending=False)
+              .reset_index(drop=True)
+        )
+
+        # Show only the first 5, with a "Show all" expander
+        with st.expander(f"❗ Missed Follow-ups ({len(df_missed)} total) – show recent 5", expanded=False):
+            st.table(df_missed[["Alert"]].head(5))
+            # nested expander for the full list
+            with st.expander("Show all missed follow-ups"):
+                st.table(df_missed[["Alert"]])
     else:
         st.info("No missed follow-ups.")
 
