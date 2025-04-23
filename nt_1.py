@@ -288,6 +288,8 @@ tabs = ["KPI","Charts","Top Dealers","Top Employees",
         "Upload New Lead","Lead Update","Insights","Alerts"]
 if role=="Admin": tabs.append("Admin")
 tabs = st.tabs(tabs)
+panels = st.tabs(tabs)                              # panels is a list
+tab    = {label: pane for label, pane in zip(tabs, panels)}
 
 # ──────────────────────────────────────────────────────────────────────────────
 # --- KPI Tab (complete updated code including lead selector & summary table) ---
@@ -958,7 +960,7 @@ if role=="Admin":
         st.download_button("Download User Log", ul.to_csv(index=False).encode(), "user_logs.csv")
         st.dataframe(ul, use_container_width=True)
 
-with tabs["Alerts"]:
+with tab["Alerts"]:
     st.subheader("🚨 Alerts")
 
     # 1) FOLLOW-UP ALERTS
