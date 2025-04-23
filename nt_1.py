@@ -408,7 +408,7 @@ with tab["KPI"]:
         options=opts,
         default=[],
         max_selections=1,
-        key="kpi_lead_select"
+        key="kpi_lead_select_main"
     )
 
     # Only show the snapshot once the user has selected something
@@ -430,7 +430,7 @@ with tab["KPI"]:
             options=opts,
             default=[],
             max_selections=1,
-            key="kpi_lead_select"
+            key="kpi_lead_select_"
         )
 
         if chosen:
