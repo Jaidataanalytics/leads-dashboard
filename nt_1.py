@@ -981,6 +981,7 @@ with tab["Alerts"]:
     # b) Missed (past due and no update on the due date)
     # load audit logs
     audits = pd.read_csv("audit_logs.csv", parse_dates=["Timestamp"], keep_default_na=False)
+    audits["Timestamp"] = pd.to_datetime(audits["Timestamp"], errors="coerce")
     missed = []
     for _, r in filtered_df.iterrows():
         pd_date = r.get("Planned Followup Date")
