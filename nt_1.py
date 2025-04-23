@@ -416,6 +416,13 @@ with tab["KPI"]:
         AgGrid(ordered, gridOptions=gb.build(), enable_enterprise_modules=False)
     else:
         st.info("No leads to display.")
+    csv = ddf.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        label="📥 Download Summary Table",
+        data=csv,
+        file_name="lead_summary.csv",
+        mime="text/csv",
+    )
 
 # --- Charts Tab ---
 ### ── REPLACE YOUR ENTIRE CHARTS TAB WITH THIS BLOCK ────────────────────────
