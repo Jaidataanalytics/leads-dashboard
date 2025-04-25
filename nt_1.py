@@ -15,16 +15,18 @@ API_URL ="https://script.google.com/macros/s/AKfycbzPs1arcDXiRJNcOtKTMA_tmOd257p
 SECRET  ="Does-this-work"
 def append_lead(record: dict):
     payload = {"secret": SECRET, "action": "append", "record": record}
-    requests.post(API_URL, json=payload).raise_for_status()
+    st.write("📤 append_lead payload:", payload)                          # ← debug
+    r = requests.post(API_URL, json=payload)
+    st.write("📥 append_lead response:", r.status_code, r.text)           # ← debug
+    r.raise_for_status()
 
 def update_lead(rowIndex: int, record: dict):
-    payload = {
-        "secret": SECRET,
-        "action": "update",
-        "rowIndex": rowIndex,
-        "record": record
-    }
-    requests.post(API_URL, json=payload).raise_for_status()
+    payload = {"secret": SECRET, "action": "update", 
+               "rowIndex": rowIndex, "record": record}
+    st.write("📤 update_lead payload:", payload)                         # ← debug
+    r = requests.post(API_URL, json=payload)
+    st.write("📥 update_lead response:", r.status_code, r.text)           # ← debug
+    r.raise_for_status()
 
 
 
