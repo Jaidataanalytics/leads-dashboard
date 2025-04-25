@@ -8,6 +8,24 @@ from sklearn.cluster import KMeans
 from datetime import datetime
 from datetime import datetime, timedelta
 from datetime import date
+import requests
+
+
+API_URL ="https://script.google.com/macros/s/AKfycbzPs1arcDXiRJNcOtKTMA_tmOd257pN46xQ-TwNj_ODf6ZATACnPmnQ6s8jxLjsZ13WXg/exec"
+SECRET  ="Does-this-work"
+def append_lead(record: dict):
+    payload = {"secret": SECRET, "action": "append", "record": record}
+    requests.post(API_URL, json=payload).raise_for_status()
+
+def update_lead(rowIndex: int, record: dict):
+    payload = {
+        "secret": SECRET,
+        "action": "update",
+        "rowIndex": rowIndex,
+        "record": record
+    }
+    requests.post(API_URL, json=payload).raise_for_status()
+
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -56,13 +74,10 @@ def log_audit(user, action, enq, field, old, new, details=""):
 # ──────────────────────────────────────────────────────────────────────────────
 @st.cache_data
 def load_data():
-    tmp = pd.read_csv("leads.csv", nrows=0)
-    leads = pd.read_csv(
-        "leads.csv",
-        dtype={"KVA": float},
-        parse_dates=["Enquiry Date","Planned Followup Date","Enquiry Closure Date"],
-        dayfirst=True, keep_default_na=False
-    ).loc[:, ~tmp.columns.duplicated()]
+    # 1) pull leads from your Apps Script
+    resp = requests.get(API_URL, params={"secret": SECRET})
+    resp.raise_for_status()
+    leads = pd.DataFrame(resp.json())
 
     # Coerce dates
     leads["Enquiry Date"] = pd.to_datetime(leads["Enquiry Date"], errors="coerce")
@@ -654,6 +669,8 @@ with tab["Upload New Lead"]:
                     leads_df.loc[len(leads_df)] = entry
                     leads_df.to_csv("leads.csv", index=False)
                     st.cache_data.clear()
+                    append_lead(entry.to_dict())
+                    st.cache_data.clear()   # this will force load_data() to re-fetch
                     log_event(current_user,"New Lead Uploaded",name)
                     st.success(f"Lead '{name}' added.")
                 st.session_state.upload_idx += 1
@@ -712,6 +729,10 @@ with tab["Lead Update"]:
                     leads_df.at[idx,"EnquiryStatus"]="Closed"
                     leads_df.at[idx,"Enquiry Closure Date"]=datetime.now()
                 leads_df.to_csv("leads.csv", index=False)
+                  # Push the entire updated row back to Google Sheets:
+                sheet_row = idx + 2   # header is row 1, so DataFrame idx 0 → sheet row 2
+                new_record = leads_df.loc[idx].to_dict()
+                update_lead(sheet_row, new_record)
                 st.cache_data.clear()
                 log_event(current_user,"Lead Updated",f"{enq} -> {new_stage}")
                 st.success("Lead updated.")
