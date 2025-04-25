@@ -294,6 +294,7 @@ panels = st.tabs(tab_labels)                              # panels is a list
 tab    = {label: pane for label, pane in zip(tab_labels, panels)}
 
 # ──────────────────────────────────────────────────────────────────────────────
+# --- KPI Tab (complete updated code including lead selector & summary table) ---
 with tab["KPI"]:
     st.subheader("Key Performance Indicators")
 
