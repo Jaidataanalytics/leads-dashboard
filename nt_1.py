@@ -15,17 +15,17 @@ API_URL ="https://script.google.com/macros/s/AKfycbzPs1arcDXiRJNcOtKTMA_tmOd257p
 SECRET  ="Does-this-work"
 def append_lead(record: dict):
     payload = {"secret": SECRET, "action": "append", "record": record}
-    st.write("📤 append_lead payload:", payload)                          # ← debug
+    
     r = requests.post(API_URL, json=payload)
-    st.write("📥 append_lead response:", r.status_code, r.text)           # ← debug
+             # ← debug
     r.raise_for_status()
 
 def update_lead(rowIndex: int, record: dict):
     payload = {"secret": SECRET, "action": "update", 
                "rowIndex": rowIndex, "record": record}
-    st.write("📤 update_lead payload:", payload)                         # ← debug
+                      # ← debug
     r = requests.post(API_URL, json=payload)
-    st.write("📥 update_lead response:", r.status_code, r.text)           # ← debug
+               # ← debug
     r.raise_for_status()
 
 
@@ -80,6 +80,16 @@ def load_data():
     resp = requests.get(API_URL, params={"secret": SECRET})
     resp.raise_for_status()
     leads = pd.DataFrame(resp.json())
+        # ─── Parse dates as UTC and then drop tzinfo ────────────────────────
+    date_cols = ["Enquiry Date", "Planned Followup Date", "Enquiry Closure Date"]
+    for col in date_cols:
+        if col in leads.columns:
+            leads[col] = (
+                pd.to_datetime(leads[col], errors="coerce", utc=True)
+                  .dt.tz_localize(None)
+            )
+
+    
 
     # Coerce dates
     leads["Enquiry Date"] = pd.to_datetime(leads["Enquiry Date"], errors="coerce")
@@ -276,11 +286,20 @@ filtered_df["Enquiry Date"] = pd.to_datetime(
 today_ts = pd.Timestamp.today().normalize()
 
 # 3) fill NaT on the closure date, and also on enquiry date just in case
-close_series = filtered_df["Enquiry Closure Date"].fillna(today_ts)
-enq_series   = filtered_df["Enquiry Date"].fillna(today_ts)
+# Compute Lead Age (Days) row-by-row to avoid dtype issues
+today_ts = pd.Timestamp.today().normalize()
 
-# 4) subtract series from series, then take the number of days
-filtered_df["Lead Age (Days)"] = (close_series - enq_series).dt.days
+def _compute_age(row):
+    cd = row["Enquiry Closure Date"]
+    ed = row["Enquiry Date"]
+    # fallback to today if missing
+    cd = today_ts if pd.isna(cd) else cd
+    ed = today_ts if pd.isna(ed) else ed
+    # cd, ed are Timestamps → subtraction gives timedelta
+    return (cd - ed).days
+
+filtered_df["Lead Age (Days)"] = filtered_df.apply(_compute_age, axis=1)
+
 log_event(current_user, "Filter Applied",
           f"{selected}, KVA={kva_range}, Dates={start_date}–{end_date}")
 # ── compute how many days each lead has been open ─────────────────────────
@@ -634,6 +653,7 @@ with tab["Upload New Lead"]:
     uf = st.file_uploader("Upload leads Excel (xlsx)", type="xlsx", key="upload_new")
     if uf:
         df_new = pd.read_excel(uf, engine="openpyxl")
+        st.write("📝 df_new columns:", df_new.columns.tolist())
         for i in range(1,6):
             col = f"Question{i}"
             if col not in df_new.columns:
