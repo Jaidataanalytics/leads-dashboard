@@ -453,89 +453,91 @@ with tab["KPI"]:
         ddf = filtered_df[filtered_df["Enquiry Stage"].isin(lost_stages)]
     else:
         ddf = filtered_df[filtered_df["Enquiry Stage"].isin(won_stages)]
+    priority = ["Name","Dealer","Employee Name","Segment","Location"]
+    cols_ord = [c for c in priority if c in ddf.columns] + \
+                [c for c in ddf.columns if c not in priority]
+    df_disp  = ddf[cols_ord]
 
-    # ——— Summary table + download ———
-    if not ddf.empty:
-        priority = ["Name","Dealer","Employee Name","Segment","Location"]
-        cols_ord = [c for c in priority if c in ddf.columns] + \
-                   [c for c in ddf.columns if c not in priority]
-        df_disp  = ddf[cols_ord]
+# ——— Summary table + download (with double-click) ———
+    from st_aggrid import JsCode, GridUpdateMode, DataReturnMode
 
-        # 1) Build the grid and wire up double-click to select a row
-        double_click = JsCode("""
-        function(event) {
-        if (event.event.detail === 2) {
-            event.api.getRowNode(event.node.id).setSelected(true);
-        }
-        }
-        """)
+    # 1) configure AgGrid for double-click selection
+    double_click = JsCode("""
+    function(event) {
+    if (event.event.detail === 2) {
+        event.api.getRowNode(event.node.id).setSelected(true);
+    }
+    }
+    """)
 
-        gb = GridOptionsBuilder.from_dataframe(df_disp)
-        gb.configure_pagination(paginationAutoPageSize=True)
-        gb.configure_default_column(enableValue=True, sortable=True, filter=True)
-        gb.configure_selection(selection_mode="single", use_checkbox=False)
-        gb.configure_grid_options(onRowClicked=double_click)
+    gb = GridOptionsBuilder.from_dataframe(df_disp)
+    gb.configure_pagination(paginationAutoPageSize=True)
+    gb.configure_default_column(enableValue=True, sortable=True, filter=True)
+    gb.configure_selection(selection_mode="single", use_checkbox=False)
+    gb.configure_grid_options(onRowClicked=double_click)
 
-        grid_resp = AgGrid(
-            df_disp,
-            gridOptions=gb.build(),
-            allow_unsafe_jscode=True,
-            update_mode=GridUpdateMode.SELECTION_CHANGED,
-            data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
-            enable_enterprise_modules=False,
-        )
+    grid_resp = AgGrid(
+        df_disp,
+        gridOptions=gb.build(),
+        allow_unsafe_jscode=True,
+        update_mode=GridUpdateMode.SELECTION_CHANGED,
+        data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
+        enable_enterprise_modules=False,
+    )
 
-        # 2) Download button (uses whatever the grid is currently showing)
-        import pandas as pd
-        if grid_resp is not None and "data" in grid_resp:
-            download_df = pd.DataFrame(grid_resp["data"])
-        else:
-            download_df = df_disp
+    # 2) Download button (drops in right below your grid)
+    if grid_resp is not None and "data" in grid_resp:
+        download_df = pd.DataFrame(grid_resp["data"])
+    else:
+        download_df = df_disp
 
-        csv = download_df.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            "📥 Download Summary Table",
-            data=csv,
-            file_name="lead_summary.csv",
-            mime="text/csv",
-        )
-        # 3) If a row got selected (via double-click), show the same snapshot expander
-        ##selected = grid_resp.get("selected_rows", [])
-        selected = grid_resp.get("selected_rows")
+    csv = download_df.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        "📥 Download Summary Table",
+        data=csv,
+        file_name="lead_summary.csv",
+        mime="text/csv",
+    )
 
-        # only proceed if there's at least one selected‐row object
-        if selected is not None and len(selected) > 0:
-            # the AgGrid response might be a list of dicts or a DataFrame
-            if isinstance(selected, list):
-                sel = selected[0]
-            else:
-                # DataFrame → grab first row as dict
-                sel = selected.iloc[0].to_dict()
+    # 3) If user double-clicked → show snapshot inline
+    selected = grid_resp.get("selected_rows")
+    if selected is not None and len(selected) > 0:
+        # handle both list-of-dicts or DataFrame
+        sel = selected[0] if isinstance(selected, list) else selected.iloc[0].to_dict()
+        enq_no = sel["Enquiry No"]
+        row = filtered_df[filtered_df["Enquiry No"].astype(str) == str(enq_no)].iloc[0]
 
-            enq_no = sel["Enquiry No"]
-            row = filtered_df[
-                filtered_df["Enquiry No"].astype(str) == str(enq_no)
-            ].iloc[0]
+        with st.expander(f"📋 Lead #{enq_no} Snapshot", expanded=True):
+            st.write(f"**Lead Age (Days):** {int(row['Lead Age (Days)']) if pd.notna(row['Lead Age (Days)']) else 'N/A'}")
+            for fld in ["Enquiry No","Name","Dealer","Employee Name","Enquiry Stage","Phone Number","Email"]:
+                st.write(f"**{fld}:** {row.get(fld,'N/A') or 'N/A'}")
+            for i in range(1,6):
+                st.write(f"**Question{i}:** {row.get(f'Question{i}','N/A')}")
+            pf = pd.to_datetime(row.get("Planned Followup Date"), errors="coerce")
+            pf_s = pf.date().isoformat() if pd.notna(pf) else "N/A"
+            st.write(f"**Planned Follow-up Date:** {pf_s}")
+            st.write(f"**No of Follow-ups:** {row.get('No of Follow-ups',0)}")
+            st.write(f"**Next Action:** {row.get('Next Action','N/A')}")
 
-            with st.expander(f"📋 Lead #{enq_no} Snapshot", expanded=True):
-                age = row["Lead Age (Days)"]
-                st.write(f"**Lead Age (Days):** {int(age) if pd.notna(age) else 'N/A'}")
+    # ——— Lead snapshot search (unchanged) ———
+    st.markdown("### Lead Details (search & select below)")
+    opts = (ddf["Enquiry No"].astype(str) + " – " + ddf["Name"]).tolist()
+    sel = st.selectbox("Search & select a lead", [""] + opts, key="kpi_lead_select")
+    if sel:
+        enq_no = sel.split(" – ", 1)[0]
+        row = ddf[ddf["Enquiry No"].astype(str) == enq_no].iloc[0]
+        with st.expander(f"📋 Lead #{enq_no} Snapshot", expanded=True):
+            st.write(f"**Lead Age (Days):** {int(row['Lead Age (Days)']) if pd.notna(row['Lead Age (Days)']) else 'N/A'}")
+            for fld in ["Enquiry No","Name","Dealer","Employee Name","Enquiry Stage","Phone Number","Email"]:
+                st.write(f"**{fld}:** {row.get(fld,'N/A') or 'N/A'}")
+            for i in range(1,6):
+                st.write(f"**Question{i}:** {row.get(f'Question{i}','N/A')}")
+            pf = pd.to_datetime(row.get("Planned Followup Date"), errors="coerce")
+            pf_s = pf.date().isoformat() if pd.notna(pf) else "N/A"
+            st.write(f"**Planned Follow-up Date:** {pf_s}")
+            st.write(f"**No of Follow-ups:** {row.get('No of Follow-ups',0)}")
+            st.write(f"**Next Action:** {row.get('Next Action','N/A')}")
 
-                for fld in [
-                    "Enquiry No","Name","Dealer","Employee Name",
-                    "Enquiry Stage","Phone Number","Email"
-                ]:
-                    st.write(f"**{fld}:** {row.get(fld, 'N/A') or 'N/A'}")
-
-                for i in range(1,6):
-                    q = row.get(f"Question{i}", "")
-                    st.write(f"**Question{i}:** {q or 'N/A'}")
-
-                pf = pd.to_datetime(row.get("Planned Followup Date"), errors="coerce")
-                pf_s = pf.date().isoformat() if pd.notna(pf) else "N/A"
-                st.write(f"**Planned Follow-up Date:** {pf_s}")
-                st.write(f"**No of Follow-ups:** {row.get('No of Follow-ups', 0)}")
-                st.write(f"**Next Action:** {row.get('Next Action','N/A')}")
 # --- Charts Tab ---
 ### ── REPLACE YOUR ENTIRE CHARTS TAB WITH THIS BLOCK ────────────────────────
 with tab["Charts"]:
