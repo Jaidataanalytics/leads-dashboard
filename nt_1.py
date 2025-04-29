@@ -500,18 +500,31 @@ with tab["KPI"]:
             mime="text/csv",
         )
         # 3) If a row got selected (via double-click), show the same snapshot expander
-        selected = grid_resp.get("selected_rows", [])
-        if selected:
-            sel = selected[0]
+        ##selected = grid_resp.get("selected_rows", [])
+        selected = grid_resp.get("selected_rows")
+
+        # only proceed if there's at least one selected‐row object
+        if selected is not None and len(selected) > 0:
+            # the AgGrid response might be a list of dicts or a DataFrame
+            if isinstance(selected, list):
+                sel = selected[0]
+            else:
+                # DataFrame → grab first row as dict
+                sel = selected.iloc[0].to_dict()
+
             enq_no = sel["Enquiry No"]
-            row = filtered_df[filtered_df["Enquiry No"].astype(str) == str(enq_no)].iloc[0]
+            row = filtered_df[
+                filtered_df["Enquiry No"].astype(str) == str(enq_no)
+            ].iloc[0]
 
             with st.expander(f"📋 Lead #{enq_no} Snapshot", expanded=True):
                 age = row["Lead Age (Days)"]
                 st.write(f"**Lead Age (Days):** {int(age) if pd.notna(age) else 'N/A'}")
 
-                for fld in ["Enquiry No","Name","Dealer","Employee Name",
-                            "Enquiry Stage","Phone Number","Email"]:
+                for fld in [
+                    "Enquiry No","Name","Dealer","Employee Name",
+                    "Enquiry Stage","Phone Number","Email"
+                ]:
                     st.write(f"**{fld}:** {row.get(fld, 'N/A') or 'N/A'}")
 
                 for i in range(1,6):
@@ -523,7 +536,6 @@ with tab["KPI"]:
                 st.write(f"**Planned Follow-up Date:** {pf_s}")
                 st.write(f"**No of Follow-ups:** {row.get('No of Follow-ups', 0)}")
                 st.write(f"**Next Action:** {row.get('Next Action','N/A')}")
-
 # --- Charts Tab ---
 ### ── REPLACE YOUR ENTIRE CHARTS TAB WITH THIS BLOCK ────────────────────────
 with tab["Charts"]:
