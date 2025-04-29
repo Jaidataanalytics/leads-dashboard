@@ -9,6 +9,8 @@ from datetime import datetime
 from datetime import datetime, timedelta
 from datetime import date
 import requests
+from st_aggrid import JsCode, GridUpdateMode, DataReturnMode
+
 
 
 API_URL ="https://script.google.com/macros/s/AKfycbzPs1arcDXiRJNcOtKTMA_tmOd257pN46xQ-TwNj_ODf6ZATACnPmnQ6s8jxLjsZ13WXg/exec"
@@ -159,7 +161,7 @@ if not st.session_state["logged_in"]:
                     "role": m.iloc[0]["Role"]
                 })
                 log_event(u, "Login")
-                st.rerun()
+                st.experimental_rerun()
             else:
                 st.error("Invalid credentials")
     st.stop()
@@ -176,7 +178,7 @@ role         = st.session_state["role"]
 with st.sidebar:
     if st.button("Logout"):
         st.session_state.clear()
-        st.rerun()
+        st.experimental_rerun()
 
     with st.expander("Filters", expanded=True):
         st.header("Filter Leads")
@@ -459,46 +461,68 @@ with tab["KPI"]:
                    [c for c in ddf.columns if c not in priority]
         df_disp  = ddf[cols_ord]
 
+        # 1) Build the grid and wire up double-click to select a row
+        double_click = JsCode("""
+        function(event) {
+        if (event.event.detail === 2) {
+            event.api.getRowNode(event.node.id).setSelected(true);
+        }
+        }
+        """)
+
         gb = GridOptionsBuilder.from_dataframe(df_disp)
         gb.configure_pagination(paginationAutoPageSize=True)
         gb.configure_default_column(enableValue=True, sortable=True, filter=True)
-        AgGrid(df_disp, gridOptions=gb.build(), enable_enterprise_modules=False)
+        gb.configure_selection(selection_mode="single", use_checkbox=False)
+        gb.configure_grid_options(onRowClicked=double_click)
 
-        csv = df_disp.to_csv(index=False).encode("utf-8")
+        grid_resp = AgGrid(
+            df_disp,
+            gridOptions=gb.build(),
+            allow_unsafe_jscode=True,
+            update_mode=GridUpdateMode.SELECTION_CHANGED,
+            data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
+            enable_enterprise_modules=False,
+        )
+
+        # 2) Download button (uses whatever the grid is currently showing)
+        import pandas as pd
+        if grid_resp is not None and "data" in grid_resp:
+            download_df = pd.DataFrame(grid_resp["data"])
+        else:
+            download_df = df_disp
+
+        csv = download_df.to_csv(index=False).encode("utf-8")
         st.download_button(
             "📥 Download Summary Table",
             data=csv,
             file_name="lead_summary.csv",
             mime="text/csv",
         )
-    else:
-        st.info("No leads to display.")
+        # 3) If a row got selected (via double-click), show the same snapshot expander
+        selected = grid_resp.get("selected_rows", [])
+        if selected:
+            sel = selected[0]
+            enq_no = sel["Enquiry No"]
+            row = filtered_df[filtered_df["Enquiry No"].astype(str) == str(enq_no)].iloc[0]
 
-    # ——— Lead snapshot ———
-    st.markdown("### Lead Details (search & select below)")
-    opts = (ddf["Enquiry No"].astype(str) + " – " + ddf["Name"]).tolist()
-    sel  = st.selectbox("Search & select a lead", [""] + opts, key="kpi_lead_select")
-    if sel:
-        enq_no = sel.split(" – ", 1)[0]
-        row    = ddf[ddf["Enquiry No"].astype(str) == enq_no].iloc[0]
+            with st.expander(f"📋 Lead #{enq_no} Snapshot", expanded=True):
+                age = row["Lead Age (Days)"]
+                st.write(f"**Lead Age (Days):** {int(age) if pd.notna(age) else 'N/A'}")
 
-        with st.expander(f"📋 Lead #{enq_no} Snapshot", expanded=True):
-            age = row["Lead Age (Days)"]
-            st.write(f"**Lead Age (Days):** {int(age) if pd.notna(age) else 'N/A'}")
+                for fld in ["Enquiry No","Name","Dealer","Employee Name",
+                            "Enquiry Stage","Phone Number","Email"]:
+                    st.write(f"**{fld}:** {row.get(fld, 'N/A') or 'N/A'}")
 
-            for fld in ["Enquiry No","Name","Dealer","Employee Name",
-                        "Enquiry Stage","Phone Number","Email"]:
-                st.write(f"**{fld}:** {row.get(fld, 'N/A') or 'N/A'}")
+                for i in range(1,6):
+                    q = row.get(f"Question{i}", "")
+                    st.write(f"**Question{i}:** {q or 'N/A'}")
 
-            for i in range(1,6):
-                q = row.get(f"Question{i}", "")
-                st.write(f"**Question{i}:** {q or 'N/A'}")
-
-            pf = pd.to_datetime(row.get("Planned Followup Date"), errors="coerce")
-            pf_s = pf.date().isoformat() if pd.notna(pf) else "N/A"
-            st.write(f"**Planned Follow-up Date:** {pf_s}")
-            st.write(f"**No of Follow-ups:** {row.get('No of Follow-ups', 0)}")
-            st.write(f"**Next Action:** {row.get('Next Action','N/A')}")
+                pf = pd.to_datetime(row.get("Planned Followup Date"), errors="coerce")
+                pf_s = pf.date().isoformat() if pd.notna(pf) else "N/A"
+                st.write(f"**Planned Follow-up Date:** {pf_s}")
+                st.write(f"**No of Follow-ups:** {row.get('No of Follow-ups', 0)}")
+                st.write(f"**Next Action:** {row.get('Next Action','N/A')}")
 
 # --- Charts Tab ---
 ### ── REPLACE YOUR ENTIRE CHARTS TAB WITH THIS BLOCK ────────────────────────
@@ -696,7 +720,7 @@ with tab["Upload New Lead"]:
                     log_event(current_user,"New Lead Uploaded",name)
                     st.success(f"Lead '{name}' added.")
                 st.session_state.upload_idx += 1
-                st.rerun()
+                st.experimental_rerun()
 
 # --- Lead Update ---
 with tab["Lead Update"]:
@@ -758,7 +782,7 @@ with tab["Lead Update"]:
                 st.cache_data.clear()
                 log_event(current_user,"Lead Updated",f"{enq} -> {new_stage}")
                 st.success("Lead updated.")
-                st.rerun()
+                st.experimental_rerun()
 
 # --- Insights (Dealer Segmentation) ---
 # ──────────────────────────────────────────────────────────────────────────────
@@ -998,7 +1022,7 @@ if role=="Admin":
             st.success(f"{len(combo)-orig} added.")
             st.cache_data.clear()
             log_event(current_user,"Historical Upload",f"{len(combo)-orig}")
-            st.rerun()
+            st.experimental_rerun()
 
         st.markdown("---")
         # Reset Data
@@ -1008,7 +1032,7 @@ if role=="Admin":
             st.success("Data wiped.")
             st.cache_data.clear()
             log_event(current_user,"Dashboard Reset")
-            st.rerun()
+            st.experimental_rerun()
 
         st.markdown("---")
         # Audit Logs
@@ -1033,7 +1057,7 @@ if role=="Admin":
                         users_df.to_csv("users.csv", index=False)
                         log_event(current_user,"User Added",nu)
                         st.success(f"Added {nu}.")
-                        st.rerun()
+                        st.experimental_rerun()
         to_del = st.multiselect("Delete Users", [u for u in users_df["Username"] if u!=current_user])
         if st.button("Delete Selected"):
             if to_del:
@@ -1041,7 +1065,7 @@ if role=="Admin":
                 users_df.to_csv("users.csv", index=False)
                 log_event(current_user,"User Deleted",",".join(to_del))
                 st.success(f"Deleted {', '.join(to_del)}.")
-                st.rerun()
+                st.experimental_rerun()
 
         st.markdown("---")
         # User Activity
