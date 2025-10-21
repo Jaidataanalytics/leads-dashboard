@@ -8,28 +8,6 @@ from sklearn.cluster import KMeans
 from datetime import datetime
 from datetime import datetime, timedelta
 from datetime import date
-import requests
-from st_aggrid import JsCode, GridUpdateMode, DataReturnMode
-
-
-
-API_URL ="https://script.google.com/macros/s/AKfycbzPs1arcDXiRJNcOtKTMA_tmOd257pN46xQ-TwNj_ODf6ZATACnPmnQ6s8jxLjsZ13WXg/exec"
-SECRET  ="Does-this-work"
-def append_lead(record: dict):
-    payload = {"secret": SECRET, "action": "append", "record": record}
-    
-    r = requests.post(API_URL, json=payload)
-             # ← debug
-    r.raise_for_status()
-
-def update_lead(rowIndex: int, record: dict):
-    payload = {"secret": SECRET, "action": "update", 
-               "rowIndex": rowIndex, "record": record}
-                      # ← debug
-    r = requests.post(API_URL, json=payload)
-               # ← debug
-    r.raise_for_status()
-
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -78,26 +56,16 @@ def log_audit(user, action, enq, field, old, new, details=""):
 # ──────────────────────────────────────────────────────────────────────────────
 @st.cache_data
 def load_data():
-    # 1) pull leads from your Apps Script
-    resp = requests.get(API_URL, params={"secret": SECRET})
-    resp.raise_for_status()
-    leads = pd.DataFrame(resp.json())
-        # ─── Parse dates as UTC and then drop tzinfo ────────────────────────
-    date_cols = ["Enquiry Date", "Planned Followup Date", "Enquiry Closure Date"]
-    for col in date_cols:
-        if col in leads.columns:
-            leads[col] = (
-                pd.to_datetime(leads[col], errors="coerce", utc=True)
-                  .dt.tz_localize(None)
-            )
-
-    
+    tmp = pd.read_csv("leads.csv", nrows=0)
+    leads = pd.read_csv(
+        "leads.csv",
+        dtype={"KVA": float},
+        parse_dates=["Enquiry Date","Planned Followup Date","Enquiry Closure Date"],
+        dayfirst=True, keep_default_na=False
+    ).loc[:, ~tmp.columns.duplicated()]
 
     # Coerce dates
     leads["Enquiry Date"] = pd.to_datetime(leads["Enquiry Date"], errors="coerce")
-        # ─── after parsing Enquiry Date ────────────────────────────────────
-    leads["Lead Age (Days)"] = (pd.Timestamp.today() - leads["Enquiry Date"]).dt.days
-
 
     # Drop unused columns
     drop_cols = ["Corporate Name","Tehsil","Pincode","PAN NO.",
@@ -121,7 +89,7 @@ def load_data():
 
     # Preserve any existing 'Uploaded by'; if missing, init blank
     if "Uploaded by" not in leads.columns:
-        leads["Uploaded by"] = "demo"
+        leads["Uploaded by"] = ""
 
     users = pd.read_csv("users.csv")
     return leads, users
@@ -232,25 +200,15 @@ with st.sidebar:
             "Segment":     sorted(leads_df["Segment"].unique())  if seg_sel=="All"    else [seg_sel],
         }
 
-# ─── KVA slider ────────────────────────────────────────────────────────────
-        valid_kva = leads_df["KVA"].dropna()
-        if not valid_kva.empty:
-            mn = int(valid_kva.min())
-            mx = int(valid_kva.max())
-        else:
-            mn, mx = 0, 1
+        # 6) KVA & Date range (unchanged)
+        # Determine min/max KVA safely
+        raw_min = leads_df["KVA"].min()
+        raw_max = leads_df["KVA"].max()
 
-        if mn >= mx:
-            mx = mn + 1
+        mn = int(raw_min) if pd.notna(raw_min) else 0
+        mx = int(raw_max) if pd.notna(raw_max) else mn + 1
 
-        kva_range = st.slider(
-            "KVA Range",
-            min_value=mn,
-            max_value=mx,
-            value=(mn, mx),
-            key="f_kva"
-        )
-
+        kva_range = st.slider("KVA Range", mn, mx, (mn, mx), key="f_kva")
 
         # Today’s date
         today = date.today()
@@ -288,36 +246,27 @@ filtered_df["Enquiry Date"] = pd.to_datetime(
 today_ts = pd.Timestamp.today().normalize()
 
 # 3) fill NaT on the closure date, and also on enquiry date just in case
-# Compute Lead Age (Days) row-by-row to avoid dtype issues
-today_ts = pd.Timestamp.today().normalize()
+close_series = filtered_df["Enquiry Closure Date"].fillna(today_ts)
+enq_series   = filtered_df["Enquiry Date"].fillna(today_ts)
 
-def _compute_age(row):
-    cd = row["Enquiry Closure Date"]
-    ed = row["Enquiry Date"]
-    # fallback to today if missing
-    cd = today_ts if pd.isna(cd) else cd
-    ed = today_ts if pd.isna(ed) else ed
-    # cd, ed are Timestamps → subtraction gives timedelta
-    return (cd - ed).days
-
-filtered_df["Lead Age (Days)"] = filtered_df.apply(_compute_age, axis=1)
-
+# 4) subtract series from series, then take the number of days
+filtered_df["Lead Age (Days)"] = (close_series - enq_series).dt.days
 log_event(current_user, "Filter Applied",
           f"{selected}, KVA={kva_range}, Dates={start_date}–{end_date}")
 # ── compute how many days each lead has been open ─────────────────────────
 
 
 # Employee sees only leads whose Employee Name first token matches OR they uploaded
-##if role == "Employee":
-##   fn = current_user.split()[0].lower()
-  ##  mask_name   = (
-    ##    filtered_df["Employee Name"]
-      ##    .str.split().str[0]
-        ##  .str.lower()
-         ## .eq(fn)
-    ##)
-   ## mask_upload = filtered_df["Uploaded by"].str.lower().str.contains(fn, na=False)
-   ## filtered_df = filtered_df[mask_name | mask_upload]
+if role == "Employee":
+    fn = current_user.split()[0].lower()
+    mask_name   = (
+        filtered_df["Employee Name"]
+          .str.split().str[0]
+          .str.lower()
+          .eq(fn)
+    )
+    mask_upload = filtered_df["Uploaded by"].str.lower().str.contains(fn, na=False)
+    filtered_df = filtered_df[mask_name | mask_upload]
 
 open_stages = ["Prospecting","Qualified"]
 won_stages  = ["Closed-Won","Order Booked"]
@@ -325,18 +274,17 @@ lost_stages = ["Closed-Dropped","Closed-Lost"]
 # ──────────────────────────────────────────────────────────────────────────────
 # Tabs setup
 # ──────────────────────────────────────────────────────────────────────────────
-tab_labels = ["KPI","Charts","Top Dealers","Top Employees",
-        "Upload New Lead","Lead Update","Insights","Alerts"]
-if role=="Admin": tab_labels.append("Admin")
-panels = st.tabs(tab_labels)                              # panels is a list
-tab    = {label: pane for label, pane in zip(tab_labels, panels)}
+tabs = ["KPI","Charts","Top Dealers","Top Employees",
+        "Upload New Lead","Lead Update","Insights"]
+if role=="Admin": tabs.append("Admin")
+tabs = st.tabs(tabs)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # --- KPI Tab (complete updated code including lead selector & summary table) ---
-with tab["KPI"]:
+with tabs[0]:
     st.subheader("Key Performance Indicators")
 
-    # ——— Build a copy without date filters for growth calculations ———
+    # 1) Apply all filters except date
     non_date_df = leads_df.copy()
     for col, vals in selected.items():
         non_date_df = non_date_df[non_date_df[col].isin(vals)]
@@ -345,106 +293,80 @@ with tab["KPI"]:
         (non_date_df["KVA"] <= kva_range[1])
     ]
 
-    # ——— Time windows ———
-    today   = datetime.today()
-    w_start = today - timedelta(days=7)
-    w_prev  = today - timedelta(days=14)
-    m_start = today - timedelta(days=30)
-    m_prev  = today - timedelta(days=60)
+    # 2) Time boundaries
+    today = datetime.today()
+    w_start, w_prev = today - timedelta(days=7), today - timedelta(days=14)
+    m_start, m_prev = today - timedelta(days=30), today - timedelta(days=60)
 
-    # ——— Helpers ———
+    # 3) Count helper
     def count_in_period(df, start, end, stages=None):
         sub = df[(df["Enquiry Date"] >= start) & (df["Enquiry Date"] < end)]
         return sub["Enquiry Stage"].isin(stages).sum() if stages else len(sub)
 
+    # 4) Growth helper
     def growth(curr, prev):
         return None if prev == 0 else (curr - prev) / prev * 100
 
+    # Compute week & month for each metric
     def comps(stages=None):
-        cw = count_in_period(non_date_df, w_start, today, stages)
-        pw = count_in_period(non_date_df, w_prev,  w_start, stages)
-        cm = count_in_period(non_date_df, m_start, today, stages)
-        pm = count_in_period(non_date_df, m_prev,  m_start, stages)
-        return growth(cw, pw), growth(cm, pm)
+        curr_w = count_in_period(non_date_df, w_start, today, stages)
+        prev_w = count_in_period(non_date_df, w_prev, w_start, stages)
+        curr_m = count_in_period(non_date_df, m_start, today, stages)
+        prev_m = count_in_period(non_date_df, m_prev, m_start, stages)
+        return growth(curr_w, prev_w), growth(curr_m, prev_m)
 
     g_w_total, g_m_total = comps()
     g_w_open,  g_m_open  = comps(open_stages)
     g_w_won,   g_m_won   = comps(won_stages)
     g_w_lost,  g_m_lost  = comps(lost_stages)
-    g_w_closed, g_m_closed = comps(won_stages + lost_stages)
 
-    # ——— Live, post-filter metrics ———
+    # 5) Current filtered metrics
     total    = len(filtered_df)
     open_ct  = filtered_df["Enquiry Stage"].isin(open_stages).sum()
     won_ct   = filtered_df["Enquiry Stage"].isin(won_stages).sum()
     lost_ct  = filtered_df["Enquiry Stage"].isin(lost_stages).sum()
-    closed_ct= won_ct + lost_ct
-    closed_pct = (closed_ct / total * 100) if total else 0.0
-
-    # Avg lead age (open or closed)
-    avg_age = (
-        int(filtered_df["Lead Age (Days)"].mean())
-        if total and filtered_df["Lead Age (Days)"].notna().any()
-        else 0
-    )
-
-    # Avg close time (only for closed leads)
-    closed_df = filtered_df[
-        filtered_df["Enquiry Stage"].isin(won_stages + lost_stages)
-    ].copy()
-    if not closed_df.empty:
-        # ensure both dates are datetime
-        closed_df["Enquiry Closure Date"] = pd.to_datetime(closed_df["Enquiry Closure Date"], errors="coerce")
-        closed_df["Enquiry Date"] = pd.to_datetime(closed_df["Enquiry Date"], errors="coerce")
-        diffs = (closed_df["Enquiry Closure Date"] - closed_df["Enquiry Date"]).dt.days
-        avg_close = int(diffs.dropna().mean()) if diffs.dropna().any() else 0
+    if filtered_df.empty or filtered_df["Lead Age (Days)"].isna().all():
+        avg_age = 0
     else:
-        avg_close = 0
+        avg_age = int(filtered_df["Lead Age (Days)"].mean())
 
-    def fmt_pct(v):
-        if v is None:
+    # 6) Format percentages
+    def fmt_pct(val):
+        if val is None:
             return "—"
-        arrow = "▲" if v >= 0 else "▼"
-        return f"{arrow}{v:+.1f}%"
+        arrow = "▲" if val >= 0 else "▼"
+        return f"{arrow}{val:+.1f}%"
 
-    # ——— KPI cards: now 7 cards ———
+    # 7) Render cards
+    cols = st.columns(5)
     specs = [
-        ("📈 Total Leads",    total,          "#2C3E50", g_w_total,  g_m_total),
-        ("🕒 Open Leads",     open_ct,        "#34495E", g_w_open,   g_m_open),
-        ("🏆 Won Leads",      won_ct,         "#006400", g_w_won,    g_m_won),
-        ("❌ Lost Leads",     lost_ct,        "#8B0000", g_w_lost,   g_m_lost),
-        ("🔄 Closed %",       f"{closed_pct:.1f}%", "#7F8C8D", g_w_closed, g_m_closed),
-        ("⏱️ Avg Lead Age",   f"{avg_age}d",   "#555555", None,       None),
-        ("⏲️ Avg Close Time", f"{avg_close}d", "#95A5A6", None,       None),
+        ("📈 Total Leads",    total,         "#2C3E50", g_w_total, g_m_total),
+        ("🕒 Open Leads",     open_ct,       "#34495E", g_w_open,  g_m_open),
+        ("🏆 Won Leads",      won_ct,        "#006400", g_w_won,   g_m_won),
+        ("❌ Lost Leads",     lost_ct,       "#8B0000", g_w_lost,  g_m_lost),
+        ("📊 Avg Lead Age",   f"{avg_age} days", "#555555", None, None),
     ]
-    cols = st.columns(len(specs))
     for col, (title, val, bg, gw, gm) in zip(cols, specs):
         growth_html = ""
         if gw is not None:
-            growth_html = (
-                f"<div style='font-size:12px;color:#DDD'>"
-                f"<span style='margin-right:8px'>W: {fmt_pct(gw)}</span>"
-                f"<span>M: {fmt_pct(gm)}</span>"
-                f"</div>"
-            )
-        col.markdown(
-            f"""
+            growth_html = f"""
+              <div style='font-size:12px;color:#DDD'>
+                <span style='margin-right:8px'>W: {fmt_pct(gw)}</span>
+                <span>M: {fmt_pct(gm)}</span>
+              </div>
+            """
+        col.markdown(f"""
             <div style='background:{bg};padding:16px;border-radius:8px;color:#FFF;text-align:center'>
               <div style='font-size:16px'>{title}</div>
               <div style='font-size:28px;font-weight:bold;margin:4px'>{val}</div>
               {growth_html}
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        """, unsafe_allow_html=True)
 
     st.markdown("---")
 
-    # ——— Drill-down filter ———
-    choice = st.radio(
-        "Details for:", ["All", "Open", "Lost", "Won"],
-        horizontal=True, key="kpi_drill"
-    )
+    # Drill‑down filter
+    choice = st.radio("Details for:", ["All", "Open", "Lost", "Won"], horizontal=True, key="kpi_drill")
     if choice == "All":
         ddf = filtered_df
     elif choice == "Open":
@@ -453,94 +375,40 @@ with tab["KPI"]:
         ddf = filtered_df[filtered_df["Enquiry Stage"].isin(lost_stages)]
     else:
         ddf = filtered_df[filtered_df["Enquiry Stage"].isin(won_stages)]
-    priority = ["Name","Dealer","Employee Name","Segment","Location"]
-    cols_ord = [c for c in priority if c in ddf.columns] + \
-                [c for c in ddf.columns if c not in priority]
-    df_disp  = ddf[cols_ord]
 
-# ——— Summary table + download (with double-click) ———
-    from st_aggrid import JsCode, GridUpdateMode, DataReturnMode
-
-    # 1) configure AgGrid for double-click selection
-    double_click = JsCode("""
-    function(event) {
-    if (event.event.detail === 2) {
-        event.api.getRowNode(event.node.id).setSelected(true);
-    }
-    }
-    """)
-
-    gb = GridOptionsBuilder.from_dataframe(df_disp)
-    gb.configure_pagination(paginationAutoPageSize=True)
-    gb.configure_default_column(enableValue=True, sortable=True, filter=True)
-    gb.configure_selection(selection_mode="single", use_checkbox=False)
-    gb.configure_grid_options(onRowClicked=double_click)
-
-    grid_resp = AgGrid(
-        df_disp,
-        gridOptions=gb.build(),
-        allow_unsafe_jscode=True,
-        update_mode=GridUpdateMode.SELECTION_CHANGED,
-        data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
-        enable_enterprise_modules=False,
-    )
-
-    # 2) Download button (drops in right below your grid)
-    if grid_resp is not None and "data" in grid_resp:
-        download_df = pd.DataFrame(grid_resp["data"])
-    else:
-        download_df = df_disp
-
-    csv = download_df.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        "📥 Download Summary Table",
-        data=csv,
-        file_name="lead_summary.csv",
-        mime="text/csv",
-    )
-
-    # 3) If user double-clicked → show snapshot inline
-    selected = grid_resp.get("selected_rows")
-    if selected is not None and len(selected) > 0:
-        # handle both list-of-dicts or DataFrame
-        sel = selected[0] if isinstance(selected, list) else selected.iloc[0].to_dict()
-        enq_no = sel["Enquiry No"]
-        row = filtered_df[filtered_df["Enquiry No"].astype(str) == str(enq_no)].iloc[0]
-
-        with st.expander(f"📋 Lead #{enq_no} Snapshot", expanded=True):
-            st.write(f"**Lead Age (Days):** {int(row['Lead Age (Days)']) if pd.notna(row['Lead Age (Days)']) else 'N/A'}")
-            for fld in ["Enquiry No","Name","Dealer","Employee Name","Enquiry Stage","Phone Number","Email"]:
-                st.write(f"**{fld}:** {row.get(fld,'N/A') or 'N/A'}")
-            for i in range(1,6):
-                st.write(f"**Question{i}:** {row.get(f'Question{i}','N/A')}")
-            pf = pd.to_datetime(row.get("Planned Followup Date"), errors="coerce")
-            pf_s = pf.date().isoformat() if pd.notna(pf) else "N/A"
-            st.write(f"**Planned Follow-up Date:** {pf_s}")
-            st.write(f"**No of Follow-ups:** {row.get('No of Follow-ups',0)}")
-            st.write(f"**Next Action:** {row.get('Next Action','N/A')}")
-
-    # ——— Lead snapshot search (unchanged) ———
+    # Lead selector & snapshot
     st.markdown("### Lead Details (search & select below)")
-    opts = (ddf["Enquiry No"].astype(str) + " – " + ddf["Name"]).tolist()
-    sel = st.selectbox("Search & select a lead", [""] + opts, key="kpi_lead_select")
-    if sel:
-        enq_no = sel.split(" – ", 1)[0]
-        row = ddf[ddf["Enquiry No"].astype(str) == enq_no].iloc[0]
-        with st.expander(f"📋 Lead #{enq_no} Snapshot", expanded=True):
-            st.write(f"**Lead Age (Days):** {int(row['Lead Age (Days)']) if pd.notna(row['Lead Age (Days)']) else 'N/A'}")
-            for fld in ["Enquiry No","Name","Dealer","Employee Name","Enquiry Stage","Phone Number","Email"]:
-                st.write(f"**{fld}:** {row.get(fld,'N/A') or 'N/A'}")
+    opts = (ddf["Enquiry No"].astype(str) + " – " + ddf["Name"]).tolist()
+    chosen = st.multiselect("Search & select a lead", opts, default=[], max_selections=1, key="kpi_lead_select")
+    if chosen:
+        enq_no, _ = chosen[0].split(" – ", 1)
+        row = leads_df[leads_df["Enquiry No"].astype(str) == enq_no].iloc[0]
+        with st.expander(f"📋 Lead #{enq_no} Snapshot", expanded=True):
+            st.write(f"**Lead Age (Days):** {row.get('Lead Age (Days)', 'N/A')}")
+            for c in ["Enquiry No","Name","Dealer","Employee Name","Enquiry Stage","Phone Number","Email"]:
+                st.write(f"**{c}:** {row.get(c,'')}")
             for i in range(1,6):
-                st.write(f"**Question{i}:** {row.get(f'Question{i}','N/A')}")
+                st.write(f"**Question{i}:** {row.get(f'Question{i}','')}")
             pf = pd.to_datetime(row.get("Planned Followup Date"), errors="coerce")
-            pf_s = pf.date().isoformat() if pd.notna(pf) else "N/A"
-            st.write(f"**Planned Follow-up Date:** {pf_s}")
-            st.write(f"**No of Follow-ups:** {row.get('No of Follow-ups',0)}")
-            st.write(f"**Next Action:** {row.get('Next Action','N/A')}")
+            st.write(f"**Planned Follow‑up Date:** {pf.date().isoformat() if pd.notna(pf) else 'N/A'}")
+            st.write(f"**No of Follow‑ups:** {row.get('No of Follow‑ups',0)}")
+            st.write(f"**Next Action:** {row.get('Next Action','')}")
+
+    # Summary table
+    if not ddf.empty:
+        pref = ["Name","Dealer","Employee Name","Segment",("Location" if "Location" in ddf.columns else "Area Office")]
+        ordered_cols = [c for c in pref if c in ddf.columns] + [c for c in ddf.columns if c not in pref]
+        ordered = ddf[ordered_cols]
+        gb = GridOptionsBuilder.from_dataframe(ordered)
+        gb.configure_pagination(paginationAutoPageSize=True)
+        gb.configure_default_column(enableValue=True, sortable=True, filter=True)
+        AgGrid(ordered, gridOptions=gb.build(), enable_enterprise_modules=False)
+    else:
+        st.info("No leads to display.")
 
 # --- Charts Tab ---
 ### ── REPLACE YOUR ENTIRE CHARTS TAB WITH THIS BLOCK ────────────────────────
-with tab["Charts"]:
+with tabs[1]:
     st.subheader("Leads Visualisations")
 
     # 1️⃣  Pipeline Funnel (unchanged)
@@ -679,19 +547,18 @@ def top5(df, by):
     agg["Conv %"] = (agg["Won_Leads"]/agg["Total_Leads"]*100).round(1)
     return agg.sort_values("Won_Leads", ascending=False).head(5).reset_index()
 
-with tab["Top Dealers"]:
+with tabs[2]:
     st.subheader("Top 5 Dealers")
     st.table(top5(filtered_df, "Dealer"))
-with tab["Top Employees"]:
+with tabs[3]:
     st.subheader("Top 5 Employees")
     st.table(top5(filtered_df, "Employee Name"))
 # --- Upload New Lead ---
-with tab["Upload New Lead"]:
+with tabs[4]:
     st.subheader("Upload New Lead")
     uf = st.file_uploader("Upload leads Excel (xlsx)", type="xlsx", key="upload_new")
     if uf:
         df_new = pd.read_excel(uf, engine="openpyxl")
-        st.write("📝 df_new columns:", df_new.columns.tolist())
         for i in range(1,6):
             col = f"Question{i}"
             if col not in df_new.columns:
@@ -729,15 +596,13 @@ with tab["Upload New Lead"]:
                     leads_df.loc[len(leads_df)] = entry
                     leads_df.to_csv("leads.csv", index=False)
                     st.cache_data.clear()
-                    append_lead(entry.to_dict())
-                    st.cache_data.clear()   # this will force load_data() to re-fetch
                     log_event(current_user,"New Lead Uploaded",name)
                     st.success(f"Lead '{name}' added.")
                 st.session_state.upload_idx += 1
                 st.rerun()
 
 # --- Lead Update ---
-with tab["Lead Update"]:
+with tabs[5]:
     st.subheader("Lead Update")
     open_df = filtered_df[filtered_df["Enquiry Stage"].isin(open_stages)]
     if open_df.empty:
@@ -789,10 +654,6 @@ with tab["Lead Update"]:
                     leads_df.at[idx,"EnquiryStatus"]="Closed"
                     leads_df.at[idx,"Enquiry Closure Date"]=datetime.now()
                 leads_df.to_csv("leads.csv", index=False)
-                  # Push the entire updated row back to Google Sheets:
-                sheet_row = idx + 2   # header is row 1, so DataFrame idx 0 → sheet row 2
-                new_record = leads_df.loc[idx].to_dict()
-                update_lead(sheet_row, new_record)
                 st.cache_data.clear()
                 log_event(current_user,"Lead Updated",f"{enq} -> {new_stage}")
                 st.success("Lead updated.")
@@ -802,7 +663,7 @@ with tab["Lead Update"]:
 # ──────────────────────────────────────────────────────────────────────────────
 # Insights Tab — Dealer Segmentation with Dynamic Cluster Count
 # ──────────────────────────────────────────────────────────────────────────────
-with tab["Insights"]:
+with tabs[6]:
     st.subheader("Dealer Segmentation (K‑Means)")
 
     # 1) Let the user pick how many clusters (2–6)
@@ -1016,7 +877,7 @@ with tab["Insights"]:
 
 # --- Admin Panel ---
 if role=="Admin":
-    with tab["Admin"]:
+    with tabs[-1]:
         st.subheader("Admin Panel")
         # Historical upload...
         hf = st.file_uploader("Upload Historical Leads", type=["xlsx","csv"], key="hist")
@@ -1086,107 +947,3 @@ if role=="Admin":
         ul = pd.read_csv("user_logs.csv")
         st.download_button("Download User Log", ul.to_csv(index=False).encode(), "user_logs.csv")
         st.dataframe(ul, use_container_width=True)
-
-with tab["Alerts"]:
-    st.subheader("🚨 Alerts")
-
-    # 1) FOLLOW-UP ALERTS
-    today = pd.Timestamp.today().normalize()
-
-    # a) Upcoming / due today
-    due_today = filtered_df[
-        filtered_df["Planned Followup Date"].dt.normalize() == today
-    ]
-    if not due_today.empty:
-        st.markdown("**Follow-ups Due Today**")
-        for _, r in due_today.iterrows():
-            st.warning(
-                f"Lead {r['Enquiry No']} – {r['Name']} scheduled for follow-up today."
-            )
-    else:
-        st.info("No follow-ups due today.")
-
-    # b) Missed (past due and no update on the due date)
-    # load audit logs
-    audits = pd.read_csv("audit_logs.csv", parse_dates=["Timestamp"], keep_default_na=False)
-    audits["Timestamp"] = pd.to_datetime(audits["Timestamp"], errors="coerce")
-    # b) Missed (past due and no update on the due date)
-    missed_rows = []
-    for _, r in filtered_df.iterrows():
-        pd_date = r.get("Planned Followup Date")
-        if pd.isna(pd_date) or pd_date.normalize() >= today:
-            continue
-        logs = audits[
-            (audits["Enquiry No"] == r["Enquiry No"]) &
-            (audits["Timestamp"].dt.normalize() == pd_date.normalize())
-        ]
-        if logs.empty:
-            missed_rows.append({
-                "Alert": (
-                    f"Lead {r['Enquiry No']} – {r['Name']} "
-                    f"follow-up on {pd_date.date()} was missed by {r['Employee Name']}"
-                ),
-                "Date": pd_date
-            })
-
-    if missed_rows:
-        # sort newest due first
-        df_missed = (
-            pd.DataFrame(missed_rows)
-              .sort_values("Date", ascending=False)
-              .reset_index(drop=True)
-        )
-
-        with st.expander(f"❗ Missed Follow-ups ({len(df_missed)} total)", expanded=False):
-            # show only the first 5
-            st.table(df_missed[["Alert"]].head(5))
-
-            # checkbox to reveal full list
-            if st.checkbox("Show all missed follow-ups", key="show_all_missed"):
-                st.table(df_missed[["Alert"]])
-    else:
-        st.info("No missed follow-ups.")
-    # c) Completed on due date
-    completed = []
-    for _, r in filtered_df.iterrows():
-        pd_date = r.get("Planned Followup Date")
-        if pd.isna(pd_date) or pd_date.normalize() > today:
-            continue
-        logs = audits[
-            (audits["Enquiry No"] == r["Enquiry No"]) &
-            (audits["Timestamp"].dt.normalize() == pd_date.normalize())
-        ]
-        if not logs.empty:
-            completed.append((r, logs.iloc[0]))
-    if completed:
-        st.markdown("**Follow-ups Completed on Schedule**")
-        for r, log in completed:
-            st.success(
-                f"Lead {r['Enquiry No']} – {r['Name']} was followed up on {r['Planned Followup Date'].date()}."
-            )
-
-    st.markdown("---")
-
-    # 2) NEW-LEAD ALERTS
-    # read login history
-    users_log = pd.read_csv("user_logs.csv", parse_dates=["Timestamp"], keep_default_na=False)
-    # find the two most recent logins for current_user
-    ul = users_log[users_log["User"] == current_user]
-    if len(ul) >= 2:
-        last_two = ul.sort_values("Timestamp", ascending=False).head(2)
-        last_login = last_two.iloc[1]["Timestamp"]
-    else:
-        last_login = pd.Timestamp.min
-
-    new_leads = audits[
-        (audits["Action"] == "New Lead Uploaded") &
-        (audits["Timestamp"] > last_login)
-    ]
-    if not new_leads.empty:
-        st.markdown("**New Leads Since Your Last Login**")
-        for _, r in new_leads.iterrows():
-            st.info(
-                f"Lead {r['Enquiry No']} uploaded at {r['Timestamp'].strftime('%Y-%m-%d %H:%M')}."
-            )
-    else:
-        st.info("No new leads since your last login.")
